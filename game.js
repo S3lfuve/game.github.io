@@ -2133,8 +2133,24 @@
     }
   }
 
+  function startLeaderboardTracking() {
+    const tracking = {
+      runId: "",
+      promise: null,
+    };
+    runtime.leaderboardRun = tracking;
+    const service = window.TimeKillerLeaderboards;
+    if (!service?.startRun) return tracking;
+    tracking.promise = service.startRun().then((runId) => {
+      if (runtime.leaderboardRun === tracking) tracking.runId = runId || "";
+      return tracking.runId;
+    }).catch(() => "");
+    return tracking;
+  }
+
   function beginGame() {
     runtime.mode = "starting";
+    startLeaderboardTracking();
     setMenuRainActive(false);
     hideScreens();
     dom.hud.classList.remove("hidden");
@@ -2156,6 +2172,7 @@
       runtime.scene.pauseForMenu();
     }
     runtime.mode = "menu";
+    runtime.leaderboardRun = null;
     dom.hud.classList.add("hidden");
     transitionTo(() => {
       hideScreens();

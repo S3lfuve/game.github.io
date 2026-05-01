@@ -1655,7 +1655,7 @@ h2 {
   }
 
   #main-menu.leaderboard-open .menu-card {
-    transform: translateY(82px);
+    transform: translateY(var(--leaderboard-mobile-shift, 82px));
   }
 
   .leaderboard-panel h3 {
@@ -1753,11 +1753,15 @@ h2 {
 
   .nickname-panel {
     width: min(92vw, 430px);
-    transform: translateY(calc(var(--result-card-half, 184px) + var(--nickname-panel-half, 34px) + 20px)) scale(0.985);
+    transform: translateY(calc(var(--result-card-half, 184px) + var(--nickname-panel-half, 34px) + 2px)) scale(0.985);
+  }
+
+  #game-over .result-card {
+    transform: translateY(-18px);
   }
 
   #game-over.screen-active .nickname-panel {
-    transform: translateY(calc(var(--result-card-half, 184px) + var(--nickname-panel-half, 34px) + 12px)) scale(1);
+    transform: translateY(calc(var(--result-card-half, 184px) + var(--nickname-panel-half, 34px) - 6px)) scale(1);
   }
 
   .menu-card .primary-button {

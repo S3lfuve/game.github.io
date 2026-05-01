@@ -92,7 +92,7 @@ const CONFIG = {
   bulletMaxDistance: 612,
   bulletFadeMs: 120,
   upgradeInvulnerabilityMs: 1500,
-  waveDurationMs: 8000,
+  waveDurationMs: 10000,
   firstSpawnIntervalMs: 1450,
   minSpawnIntervalMs: 320,
   maxEnemies: 400,
@@ -125,9 +125,9 @@ const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
 const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
 const BAZOOKA_ATTACK_INTERVALS = [0, 10, 7, 5];
 const BLOODY_CONFIG = {
-  1: { durationMs: 2000, damagePerSecond: 0.5, slowMultiplier: 1 },
-  2: { durationMs: 3000, damagePerSecond: 0.8, slowMultiplier: 0.85 },
-  3: { durationMs: 5000, damagePerSecond: 1.1, slowMultiplier: 0.75 },
+  1: { durationMs: 2000, damagePerSecond: 0.6, slowMultiplier: 1 },
+  2: { durationMs: 3000, damagePerSecond: 0.96, slowMultiplier: 0.85 },
+  3: { durationMs: 5000, damagePerSecond: 1.32, slowMultiplier: 0.75 },
 };
 const ENERGY_DRINK_SPEED_BONUS = [0, 0.1, 0.15, 0.2];
 const ENERGY_DRINK_FIRE_RATE_BONUS = [0, 0.06, 0.12, 0.24];

@@ -4,7 +4,6 @@
   const PROJECT_URL = "https://hbojcmkohqxwirysdalg.supabase.co";
   const PUBLISHABLE_KEY = "sb_publishable_stgEvQyS4pIa85D6Qei08A_wui0kw7v";
   const PLAYER_NAME_KEY = "timeKillerPlayerName";
-  const CLIENT_ID_KEY = "timeKillerLeaderboardClientId";
   const CACHE_MS = 60000;
   const CATEGORY_LABELS = {
     score: "Очки",
@@ -16,7 +15,6 @@
     sessionPromise: null,
     cache: new Map(),
     submitError: "",
-    clientId: "",
   };
 
   function createClient() {
@@ -57,12 +55,12 @@
   }
 
   function sanitizePlayerName(value) {
-    return normalizePlayerName(value).replace(/[^A-Za-zА-Яа-яЁё0-9_-]/gu, "").slice(0, 8);
+    return normalizePlayerName(value).replace(/[^A-Za-zА-Яа-яЁё0-9_-]/gu, "").slice(0, 16);
   }
 
   function isValidPlayerName(value) {
     const name = normalizePlayerName(value);
-    return /^[A-Za-zА-Яа-яЁё0-9_-]{3,8}$/u.test(name);
+    return /^[A-Za-zА-Яа-яЁё0-9_-]{3,16}$/u.test(name);
   }
 
   function getSavedPlayerName() {
@@ -83,43 +81,19 @@
     return name;
   }
 
-  function createClientId() {
-    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-    const bytes = new Uint8Array(16);
-    if (window.crypto?.getRandomValues) window.crypto.getRandomValues(bytes);
-    else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-  }
-
-  function getClientId() {
-    const pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (state.clientId && pattern.test(state.clientId)) return state.clientId;
-    try {
-      const saved = window.localStorage?.getItem(CLIENT_ID_KEY) || "";
-      if (pattern.test(saved)) {
-        state.clientId = saved;
-        return state.clientId;
-      }
-      state.clientId = createClientId();
-      window.localStorage?.setItem(CLIENT_ID_KEY, state.clientId);
-      return state.clientId;
-    } catch (error) {
-      state.clientId = state.clientId || createClientId();
-      return state.clientId;
-    }
-  }
-
   function roundNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.round(number) : NaN;
   }
 
-  function buildRunPayload(summary, playerName) {
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+  }
+
+  function buildRunPayload(summary, playerName, runId) {
     const name = normalizePlayerName(playerName);
     const payload = {
+      runId: String(runId || summary?.runId || ""),
       playerName: name,
       score: roundNumber(summary?.score),
       survivalTime: roundNumber(summary?.survivalTime),
@@ -129,6 +103,7 @@
       exp: roundNumber(summary?.expValue ?? summary?.exp),
       deviceType: summary?.deviceType === "mobile" ? "mobile" : "desktop",
     };
+    if (!isUuid(payload.runId)) return null;
     if (!isValidPlayerName(name)) return null;
     if (payload.score < 0 || payload.score > 50000) return null;
     if (payload.survivalTime < 10 || payload.survivalTime > 3600) return null;
@@ -141,24 +116,53 @@
     return payload;
   }
 
-  function canSubmitRun(summary, playerName) {
-    return Boolean(buildRunPayload(summary, playerName));
+  function canSubmitRun(summary, playerName, runId) {
+    return Boolean(buildRunPayload(summary, playerName, runId));
   }
 
-  async function submitRun(summary, playerName) {
-    const payload = buildRunPayload(summary, playerName);
+  async function startRun() {
+    state.submitError = "";
+    const session = await ensureSession();
+    const client = createClient();
+    if (!client) {
+      state.submitError = "leaderboard_unavailable";
+      return "";
+    }
+    if (!session) {
+      state.submitError = "auth_failed";
+      return "";
+    }
+    try {
+      const result = await client.rpc("start_leaderboard_run");
+      if (result.error) {
+        state.submitError = parseSubmitError(result.error);
+        return "";
+      }
+      return isUuid(result.data) ? result.data : "";
+    } catch (error) {
+      state.submitError = parseSubmitError(error);
+      return "";
+    }
+  }
+
+  async function submitRun(summary, playerName, runId) {
+    const payload = buildRunPayload(summary, playerName, runId);
     if (!payload) return false;
     state.submitError = "";
-    await ensureSession();
+    const session = await ensureSession();
     const client = createClient();
     if (!client) {
       state.submitError = "leaderboard_unavailable";
       return false;
     }
+    if (!session) {
+      state.submitError = "auth_failed";
+      return false;
+    }
     try {
       const result = await client.rpc("submit_leaderboard_run", {
+        p_run_id: payload.runId,
         p_player_name: payload.playerName,
-        p_client_id: getClientId(),
         p_score: payload.score,
         p_survival_time: payload.survivalTime,
         p_kills: payload.kills,
@@ -169,6 +173,10 @@
       });
       if (result.error) {
         state.submitError = parseSubmitError(result.error);
+        return false;
+      }
+      if (result.data !== true) {
+        state.submitError = "run_rejected";
         return false;
       }
       state.cache.clear();
@@ -182,7 +190,10 @@
   function parseSubmitError(error) {
     const text = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
     if (text.includes("nickname_taken")) return "nickname_taken";
+    if (text.includes("invalid_player_name") || text.includes("value too long") || text.includes("character varying(8)") || text.includes("character varying(12)")) return "nickname_invalid";
     if (text.includes("auth_required")) return "auth_failed";
+    if (text.includes("submit_cooldown")) return "submit_cooldown";
+    if (text.includes("run_not_active") || text.includes("run_already_submitted") || text.includes("invalid_run_id") || text.includes("run_rejected") || text.includes("invalid_elapsed_time") || text.includes("invalid_run_values")) return "run_rejected";
     return "submit_failed";
   }
 
@@ -206,7 +217,7 @@
     if (topResult.error) throw topResult.error;
     let playerRank = null;
     try {
-      const rankResult = await client.rpc("get_leaderboard_player_rank", { p_category: key, p_client_id: getClientId() });
+      const rankResult = await client.rpc("get_leaderboard_player_rank", { p_category: key });
       if (!rankResult.error) {
         playerRank = Array.isArray(rankResult.data) ? rankResult.data[0] || null : rankResult.data || null;
       }
@@ -237,6 +248,7 @@
   window.TimeKillerLeaderboards = {
     labels: CATEGORY_LABELS,
     loadCategory,
+    startRun,
     submitRun,
     canSubmitRun,
     getSubmitError,

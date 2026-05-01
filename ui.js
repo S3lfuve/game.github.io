@@ -66,6 +66,7 @@ const runtime = {
   musicEnabled: true,
   leaderboardCategory: "score",
   leaderboardRequestId: 0,
+  leaderboardRun: null,
   pendingLeaderboardRun: null,
 };
 
@@ -155,13 +156,29 @@ function syncSettingsPanelHeight() {
   if (window.matchMedia?.("(max-width: 1180px)")?.matches) {
     dom.settingsPanel.style.removeProperty("--settings-panel-height");
     dom.leaderboardPanel?.style.removeProperty("--settings-panel-height");
+    syncMobileLeaderboardOffset();
     return;
   }
+  dom.menu?.style.removeProperty("--leaderboard-mobile-shift");
   const height = Math.round(dom.menuCard.getBoundingClientRect().height);
   if (height > 0) {
     dom.settingsPanel.style.setProperty("--settings-panel-height", `${height}px`);
     dom.leaderboardPanel?.style.setProperty("--settings-panel-height", `${height}px`);
   }
+}
+
+function syncMobileLeaderboardOffset() {
+  if (!dom.menu || !dom.menuCard || !dom.leaderboardPanel) return;
+  if (!isMobileViewport()) {
+    dom.menu.style.removeProperty("--leaderboard-mobile-shift");
+    return;
+  }
+  const panelRect = dom.leaderboardPanel.getBoundingClientRect();
+  const menuRect = dom.menuCard.getBoundingClientRect();
+  const baseTop = Number.isFinite(dom.menuCard.offsetTop) ? dom.menuCard.offsetTop : menuRect.top;
+  const requiredShift = Math.ceil(panelRect.bottom + 12 - baseTop);
+  const shift = Math.max(82, requiredShift);
+  dom.menu.style.setProperty("--leaderboard-mobile-shift", `${shift}px`);
 }
 
 function syncNicknamePanelPosition() {
@@ -627,6 +644,7 @@ function renderLeaderboardRows(category, rows, playerRank) {
   } else {
     dom.leaderboardPlayerRank.classList.remove("show");
   }
+  syncSettingsPanelHeight();
 }
 
 function renderLeaderboardMessage(message) {
@@ -639,6 +657,7 @@ function renderLeaderboardMessage(message) {
   dom.leaderboardList.appendChild(element);
   dom.leaderboardPlayerRank.innerHTML = "";
   dom.leaderboardPlayerRank.classList.remove("show");
+  syncSettingsPanelHeight();
 }
 
 async function loadLeaderboard(category = runtime.leaderboardCategory, force = false) {
@@ -708,10 +727,13 @@ function setNicknameSubmitError(error) {
   if (!dom.nicknamePanel || !dom.nicknameInput) return;
   const messages = {
     nickname_taken: "Ник занят",
+    nickname_invalid: "Ник 3-16 символов",
     auth_failed: "Ошибка авторизации",
     submit_failed: "Ошибка отправки",
     leaderboard_unavailable: "Лидерборд недоступен",
   };
+  if (error === "run_rejected") messages[error] = "Р РµР·СѓР»СЊС‚Р°С‚ РѕС‚РєР»РѕРЅРµРЅ";
+  if (error === "submit_cooldown") messages[error] = "РџРѕРІС‚РѕСЂРё С‡РµСЂРµР· 15 СЃРµРє.";
   const message = messages[error] || "";
   dom.nicknamePanel.toggleAttribute("data-status", Boolean(message));
   if (message) dom.nicknamePanel.setAttribute("data-status", message);
@@ -735,6 +757,8 @@ function prepareNicknamePanel(summary) {
   if (dom.nicknameInput) dom.nicknameInput.value = service.sanitizePlayerName ? service.sanitizePlayerName(savedName) : savedName;
   runtime.pendingLeaderboardRun = {
     summary,
+    runId: runtime.leaderboardRun?.runId || "",
+    tracking: runtime.leaderboardRun || null,
     submitted: false,
     submitting: false,
   };
@@ -757,11 +781,14 @@ async function submitPendingLeaderboardRun() {
   const service = window.TimeKillerLeaderboards;
   const pending = runtime.pendingLeaderboardRun;
   if (!service || !pending || pending.submitted || pending.submitting) return "skipped";
+  if (!pending.runId && pending.tracking?.promise) {
+    pending.runId = await pending.tracking.promise || pending.tracking.runId || "";
+  }
   const name = currentNicknameForSubmit();
-  if (!service.canSubmitRun(pending.summary, name)) return "skipped";
+  if (!service.canSubmitRun(pending.summary, name, pending.runId)) return "skipped";
   pending.submitting = true;
   try {
-    const submitted = await service.submitRun(pending.summary, name);
+    const submitted = await service.submitRun(pending.summary, name, pending.runId);
     pending.submitting = false;
     if (submitted) {
       pending.submitted = true;
@@ -769,9 +796,14 @@ async function submitPendingLeaderboardRun() {
       return "submitted";
     }
     const error = service.getSubmitError?.() || "submit_failed";
-    if (error === "nickname_taken" || error === "auth_failed" || error === "submit_failed" || error === "leaderboard_unavailable") {
+    if (error === "nickname_taken" || error === "nickname_invalid") {
       setNicknameSubmitError(error);
       return "blocked";
+    }
+    if (error === "auth_failed" || error === "submit_failed" || error === "leaderboard_unavailable" || error === "run_rejected" || error === "submit_cooldown") {
+      setNicknameSubmitError(error);
+      pending.submitted = true;
+      return "failed";
     }
     pending.submitted = true;
     return "failed";
