@@ -6,3 +6,5 @@ output/
 *.log
 Thumbs.db
 .DS_Store
+progress.md
+supabase_chema.sql
