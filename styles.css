@@ -1008,6 +1008,11 @@ button {
   --upgrade-border: rgba(164, 126, 218, 0.4);
 }
 
+.upgrade-option-knockback {
+  --upgrade-rgb: 82, 108, 166;
+  --upgrade-border: rgba(138, 166, 220, 0.4);
+}
+
 .upgrade-option-energyDrink {
   --upgrade-rgb: 54, 148, 156;
   --upgrade-border: rgba(114, 212, 216, 0.4);

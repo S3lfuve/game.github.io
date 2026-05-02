@@ -108,9 +108,14 @@ const CONFIG = {
   enemySeparationStrength: 0.55,
   targetVisibilityPadding: 32,
   razerHitCooldownMs: 360,
+  knockbackDurationMs: 150,
+  knockbackMovementLockMs: 150,
   bazookaDamage: 12,
   bazookaBaseRadius: 54,
+  bazookaKnockbackRadiusMultiplier: 1.15,
   masochismRadius: 108,
+  masochismKnockbackRadius: 96,
+  masochismDamageRadius: 118,
   masochismSlowMs: 2000,
   masochismSlowMultiplier: 0.65,
   thorWarningMs: 1000,
@@ -121,9 +126,13 @@ const CONFIG = {
 const SHOOTER_BULLET_COUNTS = [1, 2, 3, 5];
 const SHOOTER_FIRE_RATE_BONUS = [0, 0, 0.05, 0.15];
 const ARROW_PIERCE_LIMITS = [0, 2, 4, 6];
+const KNOCKBACK_RANGES = [null, { min: 6, max: 11 }, { min: 10, max: 15 }];
 const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
 const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
+const MASOCHISM_KNOCKBACK_RANGE = { min: 8, max: 12 };
 const BAZOOKA_ATTACK_INTERVALS = [0, 10, 7, 5];
+const BAZOOKA_KNOCKBACK_RANGES = [null, null, { min: 14, max: 22 }, { min: 17, max: 26 }];
+const BAZOOKA_LIGHT_BLEED = { durationMs: 2000, damagePerSecond: 0.3, level: 0.5 };
 const BLOODY_CONFIG = {
   1: { durationMs: 2000, damagePerSecond: 0.6, slowMultiplier: 1 },
   2: { durationMs: 3000, damagePerSecond: 0.96, slowMultiplier: 0.85 },
@@ -137,9 +146,9 @@ const THOR_CONFIG = {
   3: { intervalMs: 3000, count: 3, damage: 10, radius: 52 },
 };
 const RAZER_CONFIG = {
-  1: { count: 1, damage: 3, radius: 75, hitRadius: 14.5, rotationsPerSecond: 0.65, color: 0xa94e59, stroke: 0xd58a85 },
-  2: { count: 2, damage: 4, radius: 79, hitRadius: 15.0, rotationsPerSecond: 0.86, color: 0xb65b61, stroke: 0xe0a09a },
-  3: { count: 3, damage: 6, radius: 83, hitRadius: 15.5, rotationsPerSecond: 1.1, color: 0x8d5aa6, stroke: 0xd1aae3 },
+  1: { count: 1, damage: 3, radius: 82.5, hitRadius: 14.5, rotationsPerSecond: 0.65, color: 0xa94e59, stroke: 0xd58a85 },
+  2: { count: 2, damage: 4, radius: 86.9, hitRadius: 15.0, rotationsPerSecond: 0.86, color: 0xb65b61, stroke: 0xe0a09a },
+  3: { count: 3, damage: 6, radius: 91.3, hitRadius: 15.5, rotationsPerSecond: 1.1, color: 0x8d5aa6, stroke: 0xd1aae3 },
 };
 
 const SUPERPOWER_REGISTRY = [
@@ -169,8 +178,8 @@ const SUPERPOWER_REGISTRY = [
     maxLevel: 3,
     descriptions: [
       "Каждая 10-я атака заменяется взрывным снарядом.",
-      "Уровень 2: выстрел каждые 7 атак, увеличенный радиус.",
-      "Уровень 3: выстрел каждые 5 атак, увеличенный радиус.",
+      "Уровень 2: выстрел каждые 7 атак, увеличенный радиус, взрыв снаряда отталкивает врагов.",
+      "Уровень 3: выстрел каждые 5 атак, взрыв снаряда накладывает легкое кровотечение на врагов.",
     ],
   },
   {
@@ -188,9 +197,9 @@ const SUPERPOWER_REGISTRY = [
     title: "Masochism",
     maxLevel: 3,
     descriptions: [
-      "При получении урона выпускает 6 сильных снарядов во все стороны.",
-      "Выпускает 8 сильных снарядов и замедляет врагов поблизости.",
-      "Выпускает 10 сильных снарядов и наносит сильный урон по области.",
+      "При получении урона выпускает 8 сильных снарядов во все стороны.",
+      "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
+      "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
     ],
   },
   {
@@ -201,6 +210,15 @@ const SUPERPOWER_REGISTRY = [
       "Каждый снаряд вызывает у врага кровотечение.",
       "Каждый снаряд замедляет врага и вызывает сильное кровотечение.",
       "Каждый снаряд сильно замедляет врага и вызывает безумное кровотечение.",
+    ],
+  },
+  {
+    id: "knockback",
+    title: "Knockback",
+    maxLevel: 2,
+    descriptions: [
+      "Отталкивает врагов получивших урон.",
+      "Сильнее отталкивает врагов получивших урон.",
     ],
   },
   {

@@ -1,6 +1,6 @@
 "use strict";
 
-(() => {
+const leaderboards = (() => {
   const PROJECT_URL = "https://hbojcmkohqxwirysdalg.supabase.co";
   const PUBLISHABLE_KEY = "sb_publishable_stgEvQyS4pIa85D6Qei08A_wui0kw7v";
   const PLAYER_NAME_KEY = "timeKillerPlayerName";
@@ -10,11 +10,23 @@
     time: "Время",
     kills: "Убийства",
   };
+  const ABILITY_MAX_LEVELS = {
+    razer: 3,
+    shooter: 3,
+    bazooka: 3,
+    arrow: 3,
+    masochism: 3,
+    bloody: 3,
+    knockback: 2,
+    energyDrink: 3,
+    thor: 3,
+  };
   const state = {
     client: null,
     sessionPromise: null,
     cache: new Map(),
     submitError: "",
+    checkpointInFlight: false,
   };
 
   function createClient() {
@@ -90,11 +102,30 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
   }
 
-  function buildRunPayload(summary, playerName, runId) {
-    const name = normalizePlayerName(playerName);
+  function normalizeBuild(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const rawSkills = source.skills && typeof source.skills === "object" ? source.skills : {};
+    const skills = {};
+    Object.keys(rawSkills).forEach((id) => {
+      const maxLevel = ABILITY_MAX_LEVELS[id];
+      const level = roundNumber(rawSkills[id]);
+      if (!maxLevel || !Number.isFinite(level) || level <= 0) return;
+      skills[id] = Math.min(maxLevel, level);
+    });
+    const rawAidKits = roundNumber(source.aidKits || 0);
+    const aidKits = Number.isFinite(rawAidKits) ? Math.max(0, Math.min(99, rawAidKits)) : 0;
+    return { skills, aidKits };
+  }
+
+  function buildUpgradeCount(build) {
+    const skills = build?.skills || {};
+    return Object.keys(skills).reduce((sum, id) => sum + Math.max(0, roundNumber(skills[id])), 0) + Math.max(0, roundNumber(build?.aidKits || 0));
+  }
+
+  function buildMetricsPayload(summary, runId) {
+    const build = normalizeBuild(summary?.build);
     const payload = {
       runId: String(runId || summary?.runId || ""),
-      playerName: name,
       score: roundNumber(summary?.score),
       survivalTime: roundNumber(summary?.survivalTime),
       kills: roundNumber(summary?.kills),
@@ -102,22 +133,36 @@
       level: roundNumber(summary?.level),
       exp: roundNumber(summary?.expValue ?? summary?.exp),
       deviceType: summary?.deviceType === "mobile" ? "mobile" : "desktop",
+      build,
     };
     if (!isUuid(payload.runId)) return null;
-    if (!isValidPlayerName(name)) return null;
     if (payload.score < 0 || payload.score > 50000) return null;
     if (payload.survivalTime < 10 || payload.survivalTime > 3600) return null;
     if (payload.kills < 0 || payload.kills > 100000) return null;
     if (payload.wave < 1 || payload.wave > 1000) return null;
-    if (payload.level < 1) return null;
+    if (payload.level < 1 || payload.level > 100) return null;
     if (payload.exp < 0 || payload.exp > 50000) return null;
     if (!Number.isFinite(payload.score + payload.survivalTime + payload.kills + payload.wave + payload.level + payload.exp)) return null;
     if (payload.wave > Math.floor(payload.survivalTime / 10) + 5) return null;
-    if (payload.kills > payload.survivalTime * 8 + 80) return null;
-    if (payload.exp > payload.survivalTime * 60 + 500) return null;
-    const maxScore = Math.min(50000, payload.survivalTime * 45 + payload.kills * 20 + payload.wave * 120 + payload.level * 80 + 500);
+    if (payload.kills > payload.survivalTime * 6.5 + 160) return null;
+    if (payload.exp > payload.survivalTime * 70 + 1000) return null;
+    if (payload.level > Math.floor(payload.survivalTime / 12) + 8) return null;
+    if (buildUpgradeCount(build) > Math.floor(payload.level / 3) + 2) return null;
+    const maxScore = Math.min(50000, payload.survivalTime * 75 + 1000);
     if (payload.score > maxScore || Math.abs(payload.score - payload.exp) > 5) return null;
     return payload;
+  }
+
+  function buildRunPayload(summary, playerName, runId) {
+    const name = normalizePlayerName(playerName);
+    const payload = buildMetricsPayload(summary, runId);
+    if (!payload || !isValidPlayerName(name)) return null;
+    payload.playerName = name;
+    return payload;
+  }
+
+  function buildCheckpointPayload(summary, runId) {
+    return buildMetricsPayload(summary, runId);
   }
 
   function canSubmitRun(summary, playerName, runId) {
@@ -174,6 +219,7 @@
         p_level: payload.level,
         p_exp: payload.exp,
         p_device_type: payload.deviceType,
+        p_build: payload.build,
       });
       if (result.error) {
         state.submitError = parseSubmitError(result.error);
@@ -188,6 +234,33 @@
     } catch (error) {
       state.submitError = parseSubmitError(error);
       return false;
+    }
+  }
+
+  async function submitCheckpoint(summary, runId) {
+    if (state.checkpointInFlight) return false;
+    const payload = buildCheckpointPayload(summary, runId);
+    if (!payload) return false;
+    const client = createClient();
+    if (!client) return false;
+    state.checkpointInFlight = true;
+    try {
+      await ensureSession();
+      const result = await client.rpc("submit_leaderboard_checkpoint", {
+        p_run_id: payload.runId,
+        p_score: payload.score,
+        p_survival_time: payload.survivalTime,
+        p_kills: payload.kills,
+        p_wave: payload.wave,
+        p_level: payload.level,
+        p_exp: payload.exp,
+        p_build: payload.build,
+      });
+      return !result.error;
+    } catch (error) {
+      return false;
+    } finally {
+      state.checkpointInFlight = false;
     }
   }
 
@@ -249,11 +322,12 @@
 
   ensureSession();
 
-  window.TimeKillerLeaderboards = {
+  return Object.freeze({
     labels: CATEGORY_LABELS,
     loadCategory,
     startRun,
     submitRun,
+    submitCheckpoint,
     canSubmitRun,
     getSubmitError,
     getSavedPlayerName,
@@ -262,5 +336,5 @@
     sanitizePlayerName,
     isValidPlayerName,
     formatValue,
-  };
+  });
 })();

@@ -601,7 +601,7 @@ function setLeaderboardCategoryMenuOpen(open) {
 }
 
 function formatLeaderboardValue(category, value) {
-  return window.TimeKillerLeaderboards?.formatValue(category, value) || String(value ?? "—");
+  return leaderboards?.formatValue(category, value) || String(value ?? "—");
 }
 
 function setLeaderboardAnimation(element, index = 0) {
@@ -661,7 +661,7 @@ function renderLeaderboardMessage(message) {
 }
 
 async function loadLeaderboard(category = runtime.leaderboardCategory, force = false) {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   const requestId = runtime.leaderboardRequestId + 1;
   runtime.leaderboardRequestId = requestId;
   if (!service) {
@@ -708,7 +708,7 @@ function toggleLeaderboardPanel() {
 }
 
 function updateNicknameButton() {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   if (!service || !dom.nicknameInput || !dom.nicknameSaveButton) return;
   const value = service.normalizePlayerName(dom.nicknameInput.value);
   const saved = service.getSavedPlayerName();
@@ -741,7 +741,7 @@ function setNicknameSubmitError(error) {
 }
 
 function sanitizeNicknameInput() {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   if (!service || !dom.nicknameInput) return;
   const sanitized = service.sanitizePlayerName
     ? service.sanitizePlayerName(dom.nicknameInput.value)
@@ -751,7 +751,7 @@ function sanitizeNicknameInput() {
 }
 
 function prepareNicknamePanel(summary) {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   if (!service) return;
   const savedName = service.getSavedPlayerName();
   if (dom.nicknameInput) dom.nicknameInput.value = service.sanitizePlayerName ? service.sanitizePlayerName(savedName) : savedName;
@@ -766,7 +766,7 @@ function prepareNicknamePanel(summary) {
 }
 
 function currentNicknameForSubmit() {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   if (!service) return "";
   sanitizeNicknameInput();
   const typed = service.normalizePlayerName(dom.nicknameInput?.value || "");
@@ -777,45 +777,51 @@ function currentNicknameForSubmit() {
   return saved;
 }
 
-async function submitPendingLeaderboardRun() {
-  const service = window.TimeKillerLeaderboards;
+function submitPendingLeaderboardRun() {
+  const service = leaderboards;
   const pending = runtime.pendingLeaderboardRun;
   if (!service || !pending || pending.submitted || pending.submitting) return "skipped";
-  if (!pending.runId && pending.tracking?.promise) {
-    pending.runId = await pending.tracking.promise || pending.tracking.runId || "";
-  }
   const name = currentNicknameForSubmit();
-  if (!service.canSubmitRun(pending.summary, name, pending.runId)) return "skipped";
-  pending.submitting = true;
-  try {
-    const submitted = await service.submitRun(pending.summary, name, pending.runId);
-    pending.submitting = false;
-    if (submitted) {
-      pending.submitted = true;
-      if (dom.leaderboardPanel?.classList.contains("open")) loadLeaderboard(runtime.leaderboardCategory, true);
-      return "submitted";
-    }
-    const error = service.getSubmitError?.() || "submit_failed";
-    if (error === "nickname_taken" || error === "nickname_invalid") {
-      setNicknameSubmitError(error);
-      return "blocked";
-    }
-    if (error === "auth_failed" || error === "submit_failed" || error === "leaderboard_unavailable" || error === "run_rejected" || error === "submit_cooldown") {
-      setNicknameSubmitError(error);
-      pending.submitted = true;
-      return "failed";
-    }
+  if (!name) {
     pending.submitted = true;
-    return "failed";
-  } catch (error) {
-    pending.submitting = false;
-    pending.submitted = true;
-    return "failed";
+    runtime.pendingLeaderboardRun = null;
+    return "skipped";
   }
+  const summary = {
+    ...pending.summary,
+    build: pending.summary?.build
+      ? {
+          skills: { ...(pending.summary.build.skills || {}) },
+          aidKits: pending.summary.build.aidKits || 0,
+        }
+      : null,
+  };
+  const initialRunId = pending.runId || pending.tracking?.runId || "";
+  const runIdPromise = initialRunId
+    ? Promise.resolve(initialRunId)
+    : pending.tracking?.promise
+      ? pending.tracking.promise.then((runId) => runId || pending.tracking?.runId || "")
+      : Promise.resolve("");
+  pending.submitting = true;
+  pending.submitted = true;
+  runtime.pendingLeaderboardRun = null;
+  runIdPromise
+    .then((runId) => {
+      if (!service.canSubmitRun(summary, name, runId)) return false;
+      return service.submitRun(summary, name, runId);
+    })
+    .then((submitted) => {
+      pending.submitting = false;
+      if (submitted && dom.leaderboardPanel?.classList.contains("open")) loadLeaderboard(runtime.leaderboardCategory, true);
+    })
+    .catch(() => {
+      pending.submitting = false;
+    });
+  return "started";
 }
 
 function saveNicknameFromInput() {
-  const service = window.TimeKillerLeaderboards;
+  const service = leaderboards;
   if (!service || !dom.nicknameInput) return;
   sanitizeNicknameInput();
   const saved = service.savePlayerName(dom.nicknameInput.value);

@@ -32,6 +32,10 @@ class Enemy {
     this.dashInertiaUntil = 0;
     this.dashX = 0;
     this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
     this.lastDamageAt = -9999;
     this.shape = null;
     this.healthBar = scene.add.graphics();
@@ -44,11 +48,11 @@ class Enemy {
     this.radius = type.radius;
     this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 0.936));
     const heavyGrowth = type.key === "redPentagon" || type.key === "cyanHexagon";
-    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.4 : 0.55);
+    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44);
     this.maxHp = type.key === "cyanHexagon" ? Math.round((type.baseHp + hpScale) * 10) / 10 : Math.round(type.baseHp + hpScale);
     this.hp = this.maxHp;
-    const waveSpeedBonus = Math.min(48, wave * 3.1);
-    const waveSpeedMultiplier = Math.pow(type.key === "cyanHexagon" ? 1.0072 : 1.012, Math.max(0, wave - 1));
+    const waveSpeedBonus = Math.min(43.2, wave * 2.79);
+    const waveSpeedMultiplier = Math.pow(type.key === "cyanHexagon" ? 1.00648 : 1.0108, Math.max(0, wave - 1));
     this.speed = (type.speed + waveSpeedBonus) * waveSpeedMultiplier;
     this.damage = type.damage;
     this.exp = type.exp;
@@ -61,6 +65,10 @@ class Enemy {
     this.dashInertiaUntil = 0;
     this.dashX = 0;
     this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
     this.lastDamageAt = -9999;
     this.dying = false;
     this.container.setPosition(x, y);
@@ -132,7 +140,18 @@ class Enemy {
       }
     }
 
-    this.body.body.setVelocity(moveX * speed, moveY * speed);
+    let velocityX = now < this.knockbackMovementLockUntil ? 0 : moveX * speed;
+    let velocityY = now < this.knockbackMovementLockUntil ? 0 : moveY * speed;
+    if (now < this.knockbackUntil) {
+      const fade = clamp((this.knockbackUntil - now) / CONFIG.knockbackDurationMs, 0, 1);
+      const eased = fade * fade;
+      velocityX += this.knockbackX * eased;
+      velocityY += this.knockbackY * eased;
+    } else {
+      this.knockbackX = 0;
+      this.knockbackY = 0;
+    }
+    this.body.body.setVelocity(velocityX, velocityY);
     this.container.rotation += (delta / 1000) * (this.type.shape === "circle" ? 0.2 : this.type.shape === "hexagon" ? 1.25 : 0.9);
     this.drawHealthBar();
   }
@@ -142,7 +161,22 @@ class Enemy {
     this.slowUntil = Math.max(this.slowUntil, until);
   }
 
+  applyKnockback(dirX, dirY, distance, now) {
+    const length = Math.hypot(dirX, dirY) || 1;
+    const duration = CONFIG.knockbackDurationMs || 110;
+    const speed = (Math.max(0, distance) * 3 * 1000) / duration;
+    this.knockbackX = (dirX / length) * speed;
+    this.knockbackY = (dirY / length) * speed;
+    this.knockbackUntil = Math.max(this.knockbackUntil, now + duration);
+    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + (CONFIG.knockbackMovementLockMs || 150));
+  }
+
   applyBleed(level, damagePerSecond, until, now) {
+    if (this.bleedUntil > now) {
+      const currentPower = this.bleedDamagePerSecond * Math.max(0, this.bleedUntil - now);
+      const incomingPower = damagePerSecond * Math.max(0, until - now);
+      if (incomingPower < currentPower && damagePerSecond <= this.bleedDamagePerSecond) return;
+    }
     this.bleedLevel = level;
     this.bleedDamagePerSecond = damagePerSecond;
     this.bleedUntil = until;
@@ -221,6 +255,10 @@ class Enemy {
     this.dashInertiaUntil = 0;
     this.dashX = 0;
     this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
     this.clearHealthBar();
   }
 

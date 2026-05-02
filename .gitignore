@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules/
+output/
+.playwright-mcp/
+*.log
+Thumbs.db
+.DS_Store
+progress.md
+supabase_chema.sql

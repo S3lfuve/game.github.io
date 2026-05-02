@@ -1,3 +1,2192 @@
+﻿(() => {
+  "use strict";
+
+"use strict";
+
+const ENEMY_TYPES = {
+  redCircle: {
+    key: "redCircle",
+    label: "red circle",
+    shape: "circle",
+    color: 0xc45d55,
+    stroke: 0xe3a09a,
+    radius: 14,
+    baseHp: 2,
+    damage: 10,
+    speed: 76,
+    exp: 1,
+    minWave: 1,
+    weight: 78,
+  },
+  blueSquare: {
+    key: "blueSquare",
+    label: "orange square",
+    shape: "square",
+    color: 0xd98242,
+    stroke: 0xf0bd81,
+    radius: 15,
+    baseHp: 4,
+    damage: 15,
+    speed: 60,
+    exp: 2,
+    minWave: 1,
+    weight: 22,
+  },
+  yellowTriangle: {
+    key: "yellowTriangle",
+    label: "yellow triangle",
+    shape: "triangle",
+    color: 0xd5b85f,
+    stroke: 0xf0d995,
+    radius: 17,
+    baseHp: 8,
+    damage: 22,
+    speed: 80,
+    exp: 4,
+    minWave: 5,
+    weight: 20,
+  },
+  redPentagon: {
+    key: "redPentagon",
+    label: "green pentagon",
+    shape: "pentagon",
+    color: 0x83b95e,
+    stroke: 0xc2e690,
+    radius: 25,
+    baseHp: 16,
+    damage: 34,
+    speed: 52,
+    exp: 8,
+    minWave: 10,
+    weight: 7,
+  },
+  cyanHexagon: {
+    key: "cyanHexagon",
+    label: "cyan hexagon",
+    shape: "hexagon",
+    color: 0x58b7c7,
+    stroke: 0xa9dfe6,
+    radius: 24,
+    baseHp: 19.2,
+    damage: 34,
+    speed: 105,
+    exp: 10,
+    minWave: 15,
+    weight: 2,
+    dashIntervalMs: 1150,
+    dashDurationMs: 132,
+    dashMultiplier: 2.05,
+    dashInertiaMs: 150,
+    dashInertiaPower: 0.24,
+  },
+};
+
+const CONFIG = {
+  playerSpeed: 233,
+  playerAcceleration: 30,
+  playerBrake: 20,
+  playerRadius: 16,
+  maxHp: 100,
+  bulletSpeed: 610,
+  bulletDamage: 2,
+  bulletRadius: 5.45,
+  fireIntervalMs: 748,
+  bulletLifeMs: 945,
+  bulletMaxDistance: 612,
+  bulletFadeMs: 120,
+  upgradeInvulnerabilityMs: 1500,
+  waveDurationMs: 10000,
+  firstSpawnIntervalMs: 1450,
+  minSpawnIntervalMs: 320,
+  maxEnemies: 400,
+  contactCooldownMs: 720,
+  spawnPaddingMin: 100,
+  spawnPaddingMax: 180,
+  magnetRadius: 135,
+  pickupRadius: 26,
+  expLifeMs: 52500,
+  expFadeMs: 600,
+  cullDistance: 1600,
+  enemySeparationCell: 56,
+  enemySeparationStrength: 0.55,
+  targetVisibilityPadding: 32,
+  razerHitCooldownMs: 360,
+  knockbackDurationMs: 150,
+  knockbackMovementLockMs: 150,
+  bazookaDamage: 12,
+  bazookaBaseRadius: 54,
+  bazookaKnockbackRadiusMultiplier: 1.15,
+  masochismRadius: 108,
+  masochismKnockbackRadius: 96,
+  masochismDamageRadius: 118,
+  masochismSlowMs: 2000,
+  masochismSlowMultiplier: 0.65,
+  thorWarningMs: 1000,
+  thorClusterRadius: 150,
+  thorMinStrikeDistance: 88,
+};
+
+const SHOOTER_BULLET_COUNTS = [1, 2, 3, 5];
+const SHOOTER_FIRE_RATE_BONUS = [0, 0, 0.05, 0.15];
+const ARROW_PIERCE_LIMITS = [0, 2, 4, 6];
+const KNOCKBACK_RANGES = [null, { min: 6, max: 11 }, { min: 10, max: 15 }];
+const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
+const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
+const MASOCHISM_KNOCKBACK_RANGE = { min: 8, max: 12 };
+const BAZOOKA_ATTACK_INTERVALS = [0, 10, 7, 5];
+const BAZOOKA_KNOCKBACK_RANGES = [null, null, { min: 14, max: 22 }, { min: 17, max: 26 }];
+const BAZOOKA_LIGHT_BLEED = { durationMs: 2000, damagePerSecond: 0.3, level: 0.5 };
+const BLOODY_CONFIG = {
+  1: { durationMs: 2000, damagePerSecond: 0.6, slowMultiplier: 1 },
+  2: { durationMs: 3000, damagePerSecond: 0.96, slowMultiplier: 0.85 },
+  3: { durationMs: 5000, damagePerSecond: 1.32, slowMultiplier: 0.75 },
+};
+const ENERGY_DRINK_SPEED_BONUS = [0, 0.1, 0.15, 0.2];
+const ENERGY_DRINK_FIRE_RATE_BONUS = [0, 0.06, 0.12, 0.24];
+const THOR_CONFIG = {
+  1: { intervalMs: 5000, count: 1, damage: 6, radius: 38 },
+  2: { intervalMs: 4000, count: 2, damage: 8, radius: 38 },
+  3: { intervalMs: 3000, count: 3, damage: 10, radius: 52 },
+};
+const RAZER_CONFIG = {
+  1: { count: 1, damage: 3, radius: 82.5, hitRadius: 14.5, rotationsPerSecond: 0.65, color: 0xa94e59, stroke: 0xd58a85 },
+  2: { count: 2, damage: 4, radius: 86.9, hitRadius: 15.0, rotationsPerSecond: 0.86, color: 0xb65b61, stroke: 0xe0a09a },
+  3: { count: 3, damage: 6, radius: 91.3, hitRadius: 15.5, rotationsPerSecond: 1.1, color: 0x8d5aa6, stroke: 0xd1aae3 },
+};
+
+const SUPERPOWER_REGISTRY = [
+  {
+    id: "razer",
+    title: "Razer",
+    maxLevel: 3,
+    descriptions: [
+      "Пила вращающаяся вокруг игрока и наносящая контактный урон.",
+      "Уровень 2: две пилы на орбите, выше скорость и урон.",
+      "Уровень 3: три фиолетовые пилы, выше скорость и урон.",
+    ],
+  },
+  {
+    id: "shooter",
+    title: "Shooter",
+    maxLevel: 3,
+    descriptions: [
+      "Игрок выпускает две пули за раз.",
+      "Уровень 2: Игрок выпускает три пули за раз.",
+      "Уровень 3: Игрок выпускает пять пуль за раз.",
+    ],
+  },
+  {
+    id: "bazooka",
+    title: "Bazooka",
+    maxLevel: 3,
+    descriptions: [
+      "Каждая 10-я атака заменяется взрывным снарядом.",
+      "Уровень 2: выстрел каждые 7 атак, увеличенный радиус, взрыв снаряда отталкивает врагов.",
+      "Уровень 3: выстрел каждые 5 атак, взрыв снаряда накладывает легкое кровотечение на врагов.",
+    ],
+  },
+  {
+    id: "arrow",
+    title: "Arrow",
+    maxLevel: 3,
+    descriptions: [
+      "Снаряды пронзают 2 врага.",
+      "Снаряды пронзают 4 врага. Увеличивает урон снаряда за каждого второго пробитого врага.",
+      "Снаряды пронзают 6 врагов. Скорость снарядов увеличена.",
+    ],
+  },
+  {
+    id: "masochism",
+    title: "Masochism",
+    maxLevel: 3,
+    descriptions: [
+      "При получении урона выпускает 8 сильных снарядов во все стороны.",
+      "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
+      "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
+    ],
+  },
+  {
+    id: "bloody",
+    title: "Bloody",
+    maxLevel: 3,
+    descriptions: [
+      "Каждый снаряд вызывает у врага кровотечение.",
+      "Каждый снаряд замедляет врага и вызывает сильное кровотечение.",
+      "Каждый снаряд сильно замедляет врага и вызывает безумное кровотечение.",
+    ],
+  },
+  {
+    id: "knockback",
+    title: "Knockback",
+    maxLevel: 2,
+    descriptions: [
+      "Отталкивает врагов получивших урон.",
+      "Сильнее отталкивает врагов получивших урон.",
+    ],
+  },
+  {
+    id: "energyDrink",
+    title: "Energy drink",
+    maxLevel: 3,
+    descriptions: [
+      "Ускоряет персонажа на 10%, ускоряет темп атаки персонажа на 6%.",
+      "Ускоряет персонажа на 15%, ускоряет темп атаки персонажа на 12%.",
+      "Ускоряет персонажа на 20%, ускоряет темп атаки персонажа на 24%.",
+    ],
+  },
+  {
+    id: "thor",
+    title: "Thor",
+    maxLevel: 3,
+    descriptions: [
+      "Каждые 5 сек. бьет молнией по скоплению врагов.",
+      "Уровень 2: каждые 4 сек. бьет двумя молниями по скоплениям.",
+      "Уровень 3: каждые 3 сек. бьет тремя молниями с увеличенной областью.",
+    ],
+  },
+];
+
+function nextLevelExp(level) {
+  return Math.floor(6 + level * 2.4 + level * level * 0.65);
+}
+
+function expSizeForValue(value) {
+  if (value <= 1.2) return 5.2;
+  if (value <= 2.4) return 6.6;
+  if (value <= 4.8) return 8.2;
+  return clamp(8.2 + Math.sqrt(value - 4.8) * 1.35, 8.2, 14);
+}
+
+function roundExpValue(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function formatExpValue(value) {
+  const rounded = roundExpValue(value);
+  if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
+  return rounded.toFixed(1).replace(/\.0$/, "");
+}
+
+function waveExpMultiplier(wave) {
+  return Math.pow(1.05, Math.max(0, wave - 1));
+}
+
+function splitExpReward(value, maxPickupSize) {
+  const totalCents = Math.max(1, Math.round(value * 100));
+  let count = 1;
+  for (let i = 1; i <= 3; i += 1) {
+    if (expSizeForValue(totalCents / 100 / i) <= maxPickupSize) {
+      count = i;
+      break;
+    }
+    count = i;
+  }
+
+  const base = Math.floor(totalCents / count);
+  const remainder = totalCents % count;
+  return Array.from({ length: count }, (_, index) => (base + (index < remainder ? 1 : 0)) / 100);
+}
+
+function makeRoundedTriangle(scene, radius, fill, stroke, lineWidth = 2) {
+  const graphics = scene.add.graphics();
+  const points = [];
+  for (let i = 0; i < 3; i += 1) {
+    const angle = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+    points.push(new Phaser.Geom.Point(Math.cos(angle) * radius, Math.sin(angle) * radius));
+  }
+
+  const corner = radius * 0.22;
+  const roundedPoints = [];
+  graphics.lineStyle(lineWidth, stroke, 0.78);
+  graphics.fillStyle(fill, 1);
+
+  points.forEach((point, index) => {
+    const prev = points[(index + points.length - 1) % points.length];
+    const next = points[(index + 1) % points.length];
+    const toPrev = new Phaser.Math.Vector2(prev.x - point.x, prev.y - point.y).normalize().scale(corner);
+    const toNext = new Phaser.Math.Vector2(next.x - point.x, next.y - point.y).normalize().scale(corner);
+    const start = new Phaser.Geom.Point(point.x + toPrev.x, point.y + toPrev.y);
+    const end = new Phaser.Geom.Point(point.x + toNext.x, point.y + toNext.y);
+
+    if (index > 0) roundedPoints.push(start);
+    for (let step = 0; step <= 4; step += 1) {
+      const t = step / 4;
+      const inv = 1 - t;
+      roundedPoints.push(
+        new Phaser.Geom.Point(
+          inv * inv * start.x + 2 * inv * t * point.x + t * t * end.x,
+          inv * inv * start.y + 2 * inv * t * point.y + t * t * end.y
+        )
+      );
+    }
+  });
+
+  graphics.fillPoints(roundedPoints, true);
+  graphics.strokePoints(roundedPoints, true);
+  return graphics;
+}
+
+function makeRegularPolygon(scene, sides, radius, fill, stroke, lineWidth = 2) {
+  const graphics = scene.add.graphics();
+  graphics.lineStyle(lineWidth, stroke, 0.78);
+  graphics.fillStyle(fill, 1);
+
+  if (sides === 4) {
+    const size = radius * 1.72;
+    graphics.fillRoundedRect(-size / 2, -size / 2, size, size, 3);
+    graphics.strokeRoundedRect(-size / 2, -size / 2, size, size, 3);
+  } else if (sides === 3) {
+    graphics.destroy();
+    return makeRoundedTriangle(scene, radius, fill, stroke, lineWidth);
+  } else {
+    const points = [];
+    const angleOffset = sides === 3 ? -Math.PI / 2 : -Math.PI / 2;
+    for (let i = 0; i < sides; i += 1) {
+      const angle = angleOffset + (i / sides) * Math.PI * 2;
+      points.push(new Phaser.Geom.Point(Math.cos(angle) * radius, Math.sin(angle) * radius));
+    }
+    graphics.fillPoints(points, true);
+    graphics.strokePoints(points, true);
+  }
+
+  return graphics;
+}
+
+
+"use strict";
+
+function isTouchOnlyDevice() {
+  const maxTouchPoints = navigator.maxTouchPoints || navigator.msMaxTouchPoints || 0;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)")?.matches ?? false;
+  const finePointer = window.matchMedia?.("(pointer: fine)")?.matches ?? false;
+  const hoverPointer = window.matchMedia?.("(hover: hover)")?.matches ?? false;
+  const ua = navigator.userAgent || "";
+  const mobileUa = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua) || navigator.userAgentData?.mobile === true;
+  const touchCapable = maxTouchPoints > 0 || coarsePointer || anyCoarsePointer || "ontouchstart" in window;
+  const desktopLikePointer = finePointer && hoverPointer;
+  if (mobileUa) return true;
+  if (!touchCapable) return false;
+  if (desktopLikePointer) return false;
+  const width = window.innerWidth || 0;
+  const height = window.innerHeight || 0;
+  const shortSide = Math.min(width, height);
+  const longSide = Math.max(width, height);
+  return (coarsePointer || anyCoarsePointer) && shortSide <= 600 && longSide <= 950;
+}
+
+function isMobileViewport() {
+  return isTouchOnlyDevice();
+}
+
+function effectiveControlType() {
+  if (isMobileViewport()) return "joystick";
+  return runtime.settings?.controlType || "keyboard";
+}
+
+function gameplayCameraZoom() {
+  return isMobileViewport() ? 0.9 : 1;
+}
+
+function isTextInputElement(element) {
+  if (!element) return false;
+  const tag = element.tagName;
+  return element.isContentEditable || tag === "INPUT" || tag === "TEXTAREA";
+}
+
+function isTextInputActive() {
+  return isTextInputElement(document.activeElement);
+}
+
+
+"use strict";
+
+class Enemy {
+  constructor(scene) {
+    this.scene = scene;
+    this.container = scene.add.container(0, 0);
+    this.container.setDepth(5);
+    this.body = scene.physics.add.existing(this.container);
+    this.body.body.setCircle(16);
+    this.active = false;
+    this.dying = false;
+    this.type = null;
+    this.hp = 0;
+    this.maxHp = 0;
+    this.speed = 0;
+    this.damage = 0;
+    this.exp = 0;
+    this.radius = 16;
+    this.separationRadius = 10;
+    this.separationX = 0;
+    this.separationY = 0;
+    this.separationIndex = 0;
+    this.spawnWave = 1;
+    this.slowUntil = 0;
+    this.slowMultiplier = 1;
+    this.bleedUntil = 0;
+    this.bleedNextTickAt = 0;
+    this.bleedDamagePerSecond = 0;
+    this.bleedLevel = 0;
+    this.nextDashAt = 0;
+    this.dashUntil = 0;
+    this.dashInertiaUntil = 0;
+    this.dashX = 0;
+    this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
+    this.lastDamageAt = -9999;
+    this.shape = null;
+    this.healthBar = scene.add.graphics();
+    this.healthBar.setDepth(7);
+    this.healthBar.setVisible(false);
+  }
+
+  spawn(x, y, type, wave) {
+    this.type = type;
+    this.radius = type.radius;
+    this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 0.936));
+    const heavyGrowth = type.key === "redPentagon" || type.key === "cyanHexagon";
+    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44);
+    this.maxHp = type.key === "cyanHexagon" ? Math.round((type.baseHp + hpScale) * 10) / 10 : Math.round(type.baseHp + hpScale);
+    this.hp = this.maxHp;
+    const waveSpeedBonus = Math.min(43.2, wave * 2.79);
+    const waveSpeedMultiplier = Math.pow(type.key === "cyanHexagon" ? 1.00648 : 1.0108, Math.max(0, wave - 1));
+    this.speed = (type.speed + waveSpeedBonus) * waveSpeedMultiplier;
+    this.damage = type.damage;
+    this.exp = type.exp;
+    this.spawnWave = wave;
+    this.slowUntil = 0;
+    this.slowMultiplier = 1;
+    this.clearBleed();
+    this.nextDashAt = this.scene.time.now + Phaser.Math.Between(320, type.dashIntervalMs || 900);
+    this.dashUntil = 0;
+    this.dashInertiaUntil = 0;
+    this.dashX = 0;
+    this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
+    this.lastDamageAt = -9999;
+    this.dying = false;
+    this.container.setPosition(x, y);
+    this.container.setActive(true).setVisible(true);
+    this.container.setAlpha(1);
+    this.container.setScale(1);
+    this.container.removeAll(true);
+
+    if (type.shape === "circle") {
+      this.shape = this.scene.add.graphics();
+      this.shape.lineStyle(2, type.stroke, 0.74);
+      this.shape.fillStyle(type.color, 1);
+      this.shape.fillCircle(0, 0, this.radius);
+      this.shape.strokeCircle(0, 0, this.radius);
+    } else if (type.shape === "square") {
+      this.shape = makeRegularPolygon(this.scene, 4, this.radius, type.color, type.stroke, 2);
+    } else if (type.shape === "triangle") {
+      this.shape = makeRegularPolygon(this.scene, 3, this.radius, type.color, type.stroke, 2);
+    } else if (type.shape === "hexagon") {
+      this.shape = makeRegularPolygon(this.scene, 6, this.radius, type.color, type.stroke, 2);
+    } else {
+      this.shape = makeRegularPolygon(this.scene, 5, this.radius, type.color, type.stroke, 2);
+    }
+
+    this.container.add(this.shape);
+    this.body.body.setCircle(this.radius);
+    this.body.body.setOffset(-this.radius, -this.radius);
+    this.body.body.enable = true;
+    this.active = true;
+    this.clearHealthBar();
+  }
+
+  update(player, delta, now = 0) {
+    if (!this.active) return;
+    const dx = player.body.x - this.container.x;
+    const dy = player.body.y - this.container.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const slow = now < this.slowUntil ? this.slowMultiplier : 1;
+    let moveX = dx / distance;
+    let moveY = dy / distance;
+    let speed = this.speed * slow;
+
+    if (this.type.dashIntervalMs) {
+      if (now >= this.nextDashAt) {
+        const dashDx = player.body.x - this.container.x;
+        const dashDy = player.body.y - this.container.y;
+        const dashDistance = Math.hypot(dashDx, dashDy) || 1;
+        this.dashX = dashDx / dashDistance;
+        this.dashY = dashDy / dashDistance;
+        this.dashUntil = now + this.type.dashDurationMs;
+        this.dashInertiaUntil = this.dashUntil + (this.type.dashInertiaMs || 0);
+        this.nextDashAt = now + this.type.dashIntervalMs;
+      }
+
+      if (now < this.dashUntil) {
+        moveX = this.dashX;
+        moveY = this.dashY;
+        speed *= this.type.dashMultiplier;
+      } else if (now < this.dashInertiaUntil) {
+        const inertiaMs = this.type.dashInertiaMs || 1;
+        const fade = clamp((this.dashInertiaUntil - now) / inertiaMs, 0, 1);
+        const pull = (this.type.dashInertiaPower || 0.2) * fade;
+        const blendedX = moveX * (1 - pull) + this.dashX * pull;
+        const blendedY = moveY * (1 - pull) + this.dashY * pull;
+        const blendedDistance = Math.hypot(blendedX, blendedY) || 1;
+        moveX = blendedX / blendedDistance;
+        moveY = blendedY / blendedDistance;
+        speed *= 1 + (this.type.dashMultiplier - 1) * 0.18 * fade;
+      }
+    }
+
+    let velocityX = now < this.knockbackMovementLockUntil ? 0 : moveX * speed;
+    let velocityY = now < this.knockbackMovementLockUntil ? 0 : moveY * speed;
+    if (now < this.knockbackUntil) {
+      const fade = clamp((this.knockbackUntil - now) / CONFIG.knockbackDurationMs, 0, 1);
+      const eased = fade * fade;
+      velocityX += this.knockbackX * eased;
+      velocityY += this.knockbackY * eased;
+    } else {
+      this.knockbackX = 0;
+      this.knockbackY = 0;
+    }
+    this.body.body.setVelocity(velocityX, velocityY);
+    this.container.rotation += (delta / 1000) * (this.type.shape === "circle" ? 0.2 : this.type.shape === "hexagon" ? 1.25 : 0.9);
+    this.drawHealthBar();
+  }
+
+  applySlow(multiplier, until) {
+    this.slowMultiplier = Math.min(this.slowMultiplier, multiplier);
+    this.slowUntil = Math.max(this.slowUntil, until);
+  }
+
+  applyKnockback(dirX, dirY, distance, now) {
+    const length = Math.hypot(dirX, dirY) || 1;
+    const duration = CONFIG.knockbackDurationMs || 110;
+    const speed = (Math.max(0, distance) * 3 * 1000) / duration;
+    this.knockbackX = (dirX / length) * speed;
+    this.knockbackY = (dirY / length) * speed;
+    this.knockbackUntil = Math.max(this.knockbackUntil, now + duration);
+    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + (CONFIG.knockbackMovementLockMs || 150));
+  }
+
+  applyBleed(level, damagePerSecond, until, now) {
+    if (this.bleedUntil > now) {
+      const currentPower = this.bleedDamagePerSecond * Math.max(0, this.bleedUntil - now);
+      const incomingPower = damagePerSecond * Math.max(0, until - now);
+      if (incomingPower < currentPower && damagePerSecond <= this.bleedDamagePerSecond) return;
+    }
+    this.bleedLevel = level;
+    this.bleedDamagePerSecond = damagePerSecond;
+    this.bleedUntil = until;
+    const nextTick = now + 1000;
+    this.bleedNextTickAt = this.bleedNextTickAt > now ? Math.min(this.bleedNextTickAt, nextTick) : nextTick;
+  }
+
+  clearBleed() {
+    this.bleedUntil = 0;
+    this.bleedNextTickAt = 0;
+    this.bleedDamagePerSecond = 0;
+    this.bleedLevel = 0;
+  }
+
+  takeDamage(amount, feedback = true) {
+    if (!this.active) return false;
+    this.hp = Math.max(0, this.hp - amount);
+    this.drawHealthBar();
+    if (!feedback) return this.hp <= 0;
+    this.scene.tweens.killTweensOf(this.container);
+    this.container.setAlpha(1);
+    this.container.setScale(1);
+    this.scene.tweens.add({
+      targets: this.container,
+      alpha: 0.62,
+      scaleX: 1.12,
+      scaleY: 1.12,
+      duration: 55,
+      yoyo: true,
+      ease: "Sine.easeOut",
+      onComplete: () => {
+        if (this.active && !this.dying) {
+          this.container.setAlpha(1);
+          this.container.setScale(1);
+        }
+      },
+    });
+    return this.hp <= 0;
+  }
+
+  kill() {
+    if (this.dying) return;
+    this.active = false;
+    this.dying = true;
+    this.body.body.enable = false;
+    this.body.body.setVelocity(0, 0);
+    this.clearHealthBar();
+    this.scene.tweens.killTweensOf(this.container);
+    this.scene.tweens.add({
+      targets: this.container,
+      alpha: 0,
+      scaleX: 0.25,
+      scaleY: 0.25,
+      duration: 240,
+      ease: "Sine.easeInOut",
+      onComplete: () => this.disable(),
+    });
+  }
+
+  disable() {
+    this.active = false;
+    this.dying = false;
+    this.scene.tweens.killTweensOf(this.container);
+    this.body.body.enable = false;
+    this.body.body.setVelocity(0, 0);
+    this.container.setActive(false).setVisible(false);
+    this.container.removeAll(true);
+    this.container.setAlpha(1);
+    this.container.setScale(1);
+    this.spawnWave = 1;
+    this.slowUntil = 0;
+    this.slowMultiplier = 1;
+    this.clearBleed();
+    this.nextDashAt = 0;
+    this.dashUntil = 0;
+    this.dashInertiaUntil = 0;
+    this.dashX = 0;
+    this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
+    this.clearHealthBar();
+  }
+
+  drawHealthBar() {
+    if (!this.active || this.hp >= this.maxHp) {
+      this.clearHealthBar();
+      return;
+    }
+
+    const pct = clamp(this.hp / this.maxHp, 0, 1);
+    const width = clamp(this.radius * 2.2, 22, 46);
+    const height = 4;
+    const x = this.container.x - width / 2;
+    const y = this.container.y - this.radius - 14;
+
+    this.healthBar.clear();
+    this.healthBar.setVisible(true);
+    this.healthBar.fillStyle(0x11100e, 0.76);
+    this.healthBar.fillRoundedRect(x, y, width, height, 2);
+    this.healthBar.fillStyle(0xc56b55, 0.9);
+    this.healthBar.fillRoundedRect(x, y, Math.max(2, width * pct), height, 2);
+    this.healthBar.lineStyle(1, 0xffffff, 0.1);
+    this.healthBar.strokeRoundedRect(x, y, width, height, 2);
+  }
+
+  clearHealthBar() {
+    this.healthBar.clear();
+    this.healthBar.setVisible(false);
+  }
+}
+
+class WaveDirector {
+  constructor(scene) {
+    this.scene = scene;
+    this.reset();
+  }
+
+  reset() {
+    this.wave = 1;
+    this.elapsed = 0;
+    this.nextWaveAt = CONFIG.waveDurationMs;
+    this.spawnTimer = 0;
+  }
+
+  update(delta) {
+    this.elapsed += delta;
+
+    if (this.elapsed >= this.nextWaveAt) {
+      this.wave += 1;
+      this.nextWaveAt += CONFIG.waveDurationMs;
+      this.scene.onWaveChanged(this.wave);
+    }
+
+    this.spawnTimer -= delta;
+    if (this.spawnTimer <= 0) {
+      this.scene.spawnEnemyPack();
+      this.spawnTimer = this.currentSpawnInterval();
+    }
+  }
+
+  currentSpawnInterval() {
+    const interval = CONFIG.firstSpawnIntervalMs - (this.wave - 1) * 82;
+    const waveSpawnSpeedMultiplier = Math.pow(0.995, this.wave - 1);
+    return Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier);
+  }
+
+  spawnCount() {
+    let count = 1;
+    if (this.wave >= 13) count = Phaser.Math.Between(3, 4);
+    else if (this.wave >= 8) count = Phaser.Math.Between(2, 3);
+    else if (this.wave >= 4) count = Phaser.Math.Between(1, 2);
+
+    const extraChance = this.wave === 1 ? 0.06 : clamp(count * 0.12, 0.12, 0.42);
+    return count + (Math.random() < extraChance ? 1 : 0);
+  }
+
+  chooseType() {
+    const available = Object.values(ENEMY_TYPES).filter((type) => type.minWave <= this.wave);
+    const weighted = available.map((type) => {
+      let weight = type.weight;
+      if (type.key === "yellowTriangle") weight += Math.min(10, this.wave - 5);
+      if (type.key === "redPentagon") weight += Math.min(6, Math.floor((this.wave - 10) / 2));
+      if (type.key === "cyanHexagon") weight += Math.min(3, Math.floor((this.wave - 15) / 4));
+      return { type, weight };
+    });
+
+    const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * total;
+    for (const entry of weighted) {
+      roll -= entry.weight;
+      if (roll <= 0) return entry.type;
+    }
+    return weighted[0].type;
+  }
+}
+
+
+"use strict";
+
+function makeRazerSaw(scene, level) {
+  const cfg = RAZER_CONFIG[level] || RAZER_CONFIG[1];
+  const graphics = scene.add.graphics();
+  const outer = level >= 3 ? 14.7 : 13.5;
+  const inner = level >= 3 ? 8.6 : 8;
+  const points = [];
+
+  for (let i = 0; i < 18; i += 1) {
+    const angle = -Math.PI / 2 + (i / 18) * Math.PI * 2;
+    const radius = i % 2 === 0 ? outer : inner;
+    points.push(new Phaser.Geom.Point(Math.cos(angle) * radius, Math.sin(angle) * radius));
+  }
+
+  graphics.fillStyle(cfg.color, 0.92);
+  graphics.fillPoints(points, true);
+  graphics.lineStyle(1.5, cfg.stroke, 0.78);
+  graphics.strokePoints(points, true);
+  graphics.fillStyle(level >= 3 ? 0x3a2942 : 0x2c2222, 0.8);
+  graphics.fillCircle(0, 0, 4.4);
+  return graphics;
+}
+
+
+"use strict";
+
+const dom = {
+  shell: document.getElementById("game-shell"),
+  container: document.getElementById("game-container"),
+  menu: document.getElementById("main-menu"),
+  menuCard: document.querySelector(".menu-card"),
+  menuRain: document.getElementById("menu-rain"),
+  gameOver: document.getElementById("game-over"),
+  resultCard: document.querySelector(".result-card"),
+  pauseScreen: document.getElementById("pause-screen"),
+  upgradeScreen: document.getElementById("upgrade-screen"),
+  upgradeOptions: document.getElementById("upgrade-options"),
+  leaderboardButton: document.getElementById("leaderboard-button"),
+  leaderboardPanel: document.getElementById("leaderboard-panel"),
+  leaderboardCategoryButton: document.getElementById("leaderboard-category-button"),
+  leaderboardCategoryLabel: document.getElementById("leaderboard-category-label"),
+  leaderboardCategoryMenu: document.getElementById("leaderboard-category-menu"),
+  leaderboardList: document.getElementById("leaderboard-list"),
+  leaderboardPlayerRank: document.getElementById("leaderboard-player-rank"),
+  settingsButton: document.getElementById("settings-button"),
+  settingsPanel: document.getElementById("settings-panel"),
+  settingControlRow: document.getElementById("setting-control-type-row"),
+  settingJoystickRow: document.getElementById("setting-joystickOpacity")?.closest(".settings-row"),
+  settingLabels: {
+    controlType: document.getElementById("setting-controlType"),
+    hudPosition: document.getElementById("setting-hudPosition"),
+    joystickOpacity: document.getElementById("setting-joystickOpacity"),
+  },
+  pauseButton: document.getElementById("pause-button"),
+  musicButton: document.getElementById("music-button"),
+  playButton: document.getElementById("play-button"),
+  restartButton: document.getElementById("restart-button"),
+  menuButton: document.getElementById("menu-button"),
+  resumeButton: document.getElementById("resume-button"),
+  pauseMenuButton: document.getElementById("pause-menu-button"),
+  hud: document.getElementById("hud"),
+  wave: document.getElementById("hud-wave"),
+  time: document.getElementById("hud-time"),
+  hpText: document.getElementById("hud-hp-text"),
+  hpFill: document.getElementById("hp-fill"),
+  level: document.getElementById("hud-level"),
+  expText: document.getElementById("hud-exp-text"),
+  expFill: document.getElementById("exp-fill"),
+  levelToast: document.getElementById("level-toast"),
+  damageVignette: document.getElementById("damage-vignette"),
+  fadeLayer: document.getElementById("fade-layer"),
+  joystick: document.getElementById("joystick"),
+  joystickKnob: document.getElementById("joystick-knob"),
+  statTime: document.getElementById("stat-time"),
+  statLevel: document.getElementById("stat-level"),
+  statWave: document.getElementById("stat-wave"),
+  statKills: document.getElementById("stat-kills"),
+  statExp: document.getElementById("stat-exp"),
+  nicknamePanel: document.getElementById("nickname-panel"),
+  nicknameInput: document.getElementById("nickname-input"),
+  nicknameSaveButton: document.getElementById("nickname-save-button"),
+};
+
+const runtime = {
+  mode: "menu",
+  scene: null,
+  lastSummary: null,
+  pendingStart: false,
+  settings: null,
+  musicEnabled: true,
+  leaderboardCategory: "score",
+  leaderboardRequestId: 0,
+  leaderboardRun: null,
+  pendingLeaderboardRun: null,
+};
+
+const SETTINGS_STORAGE_KEY = "timeKillerSettings";
+
+const SETTING_OPTIONS = {
+  controlType: [
+    { value: "keyboard", label: "Клавиатура" },
+    { value: "joystick", label: "Джойстик" },
+    { value: "cursor", label: "Курсор" },
+    { value: "combined", label: "Комбинированное" },
+  ],
+  hudPosition: [
+    { value: "top", label: "Сверху" },
+    { value: "bottom", label: "Снизу" },
+  ],
+  joystickOpacity: [
+    { value: "0", label: "0%" },
+    { value: "25", label: "25%" },
+    { value: "50", label: "50%" },
+    { value: "75", label: "75%" },
+  ],
+};
+
+function defaultSettings() {
+  return {
+    controlType: "combined",
+    hudPosition: isMobileViewport() ? "top" : "bottom",
+    joystickOpacity: "75",
+  };
+}
+
+function isValidSetting(key, value) {
+  return SETTING_OPTIONS[key]?.some((option) => option.value === value) || false;
+}
+
+function loadSettings() {
+  const settings = defaultSettings();
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return settings;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return settings;
+
+    Object.keys(SETTING_OPTIONS).forEach((key) => {
+      if (isValidSetting(key, parsed[key])) settings[key] = parsed[key];
+    });
+  } catch (error) {
+    return settings;
+  }
+  return settings;
+}
+
+function saveSettings() {
+  try {
+    window.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(runtime.settings));
+  } catch (error) {}
+}
+
+function settingLabel(key, value) {
+  return SETTING_OPTIONS[key]?.find((option) => option.value === value)?.label || value;
+}
+
+function isJoystickOpacityLocked() {
+  if (!runtime.settings || isMobileViewport()) return false;
+  return runtime.settings.controlType === "keyboard" || runtime.settings.controlType === "cursor";
+}
+
+function updateSettingsUi(skipKey = "") {
+  if (!runtime.settings) return;
+  Object.keys(dom.settingLabels).forEach((key) => {
+    if (key !== skipKey && dom.settingLabels[key]) {
+      dom.settingLabels[key].textContent = settingLabel(key, runtime.settings[key]);
+    }
+  });
+  dom.settingControlRow?.classList.toggle("hidden", isMobileViewport());
+  const joystickLocked = isJoystickOpacityLocked();
+  dom.settingJoystickRow?.classList.toggle("is-disabled", joystickLocked);
+  dom.settingJoystickRow?.querySelectorAll(".settings-arrow").forEach((button) => {
+    button.disabled = joystickLocked;
+    button.setAttribute("aria-disabled", joystickLocked ? "true" : "false");
+  });
+}
+
+function syncSettingsPanelHeight() {
+  if (!dom.settingsPanel || !dom.menuCard) return;
+  if (window.matchMedia?.("(max-width: 1180px)")?.matches) {
+    dom.settingsPanel.style.removeProperty("--settings-panel-height");
+    dom.leaderboardPanel?.style.removeProperty("--settings-panel-height");
+    syncMobileLeaderboardOffset();
+    return;
+  }
+  dom.menu?.style.removeProperty("--leaderboard-mobile-shift");
+  const height = Math.round(dom.menuCard.getBoundingClientRect().height);
+  if (height > 0) {
+    dom.settingsPanel.style.setProperty("--settings-panel-height", `${height}px`);
+    dom.leaderboardPanel?.style.setProperty("--settings-panel-height", `${height}px`);
+  }
+}
+
+function syncMobileLeaderboardOffset() {
+  if (!dom.menu || !dom.menuCard || !dom.leaderboardPanel) return;
+  if (!isMobileViewport()) {
+    dom.menu.style.removeProperty("--leaderboard-mobile-shift");
+    return;
+  }
+  const panelRect = dom.leaderboardPanel.getBoundingClientRect();
+  const menuRect = dom.menuCard.getBoundingClientRect();
+  const baseTop = Number.isFinite(dom.menuCard.offsetTop) ? dom.menuCard.offsetTop : menuRect.top;
+  const requiredShift = Math.ceil(panelRect.bottom + 12 - baseTop);
+  const shift = Math.max(82, requiredShift);
+  dom.menu.style.setProperty("--leaderboard-mobile-shift", `${shift}px`);
+}
+
+function syncNicknamePanelPosition() {
+  if (!dom.gameOver || !dom.resultCard || !dom.nicknamePanel) return;
+  const resultHeight = Math.round(dom.resultCard.getBoundingClientRect().height);
+  const nicknameHeight = Math.round(dom.nicknamePanel.getBoundingClientRect().height);
+  if (resultHeight > 0) dom.gameOver.style.setProperty("--result-card-half", `${Math.round(resultHeight / 2)}px`);
+  if (nicknameHeight > 0) dom.gameOver.style.setProperty("--nickname-panel-half", `${Math.round(nicknameHeight / 2)}px`);
+}
+
+function setNicknamePanelActive(active) {
+  if (!dom.nicknamePanel || !dom.nicknameInput || !dom.nicknameSaveButton) return;
+  dom.nicknamePanel.setAttribute("aria-hidden", active ? "false" : "true");
+  dom.nicknamePanel.classList.toggle("is-active", active);
+  dom.nicknameInput.disabled = !active;
+  dom.nicknameInput.tabIndex = active ? 0 : -1;
+  if (!active) {
+    dom.nicknameInput.blur();
+    dom.nicknameSaveButton.disabled = true;
+  } else {
+    updateNicknameButton();
+  }
+}
+
+function applySettings(skipLabelKey = "") {
+  if (!runtime.settings) return;
+  const hudTop = runtime.settings.hudPosition === "top";
+  dom.shell.dataset.hudPosition = runtime.settings.hudPosition;
+  dom.hud.classList.toggle("hud-top", hudTop);
+  dom.hud.classList.toggle("hud-bottom", !hudTop);
+  dom.levelToast.classList.toggle("toast-below-hud", hudTop);
+  dom.joystick.style.setProperty("--joystick-opacity", String(Number(runtime.settings.joystickOpacity) / 100));
+  updateSettingsUi(skipLabelKey);
+  syncSettingsPanelHeight();
+  positionLevelToast();
+  runtime.scene?.applyRuntimeSettings();
+}
+
+function animateSettingLabel(key) {
+  const label = dom.settingLabels[key];
+  if (!label || !runtime.settings) return;
+  window.clearTimeout(label._settingSwapTimer);
+  window.clearTimeout(label._settingEnterTimer);
+  label.classList.remove("value-enter");
+  label.classList.add("value-exit");
+  label._settingSwapTimer = window.setTimeout(() => {
+    label.textContent = settingLabel(key, runtime.settings[key]);
+    label.classList.remove("value-exit");
+    void label.offsetWidth;
+    label.classList.add("value-enter");
+    label._settingEnterTimer = window.setTimeout(() => {
+      label.classList.remove("value-enter");
+    }, 190);
+  }, 70);
+}
+
+function cycleSetting(key, direction) {
+  const options = SETTING_OPTIONS[key];
+  if (!options || !runtime.settings) return;
+  if (key === "joystickOpacity" && isJoystickOpacityLocked()) return;
+  const currentIndex = Math.max(0, options.findIndex((option) => option.value === runtime.settings[key]));
+  const nextIndex = (currentIndex + direction + options.length) % options.length;
+  runtime.settings[key] = options[nextIndex].value;
+  saveSettings();
+  applySettings(key);
+  animateSettingLabel(key);
+}
+
+const MENU_RAIN_TYPES = ["circle", "square", "triangle", "pentagon", "hexagon"];
+const menuRainState = {
+  shapes: [],
+  active: new Set(),
+  recentSpawns: [],
+  spawnTimer: null,
+  running: false,
+  seed: 0,
+};
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatTime(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function randomDirection() {
+  const angle = Math.random() * Math.PI * 2;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function shuffled(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function desiredMenuRainCount() {
+  const width = window.innerWidth;
+  if (width < 520) return 9;
+  if (width < 820) return 12;
+  const count = clamp(Math.round(width / 78), 16, 24);
+  return isDesktopPointer() ? Math.max(count + 1, Math.ceil(count * 1.05)) : count;
+}
+
+function menuRainSpawnDelay() {
+  return window.innerWidth < 620 ? randomRange(620, 1050) : randomRange(390, 820);
+}
+
+function createMenuShapeElement() {
+  const element = document.createElement("span");
+  element.className = "menu-shape";
+  element.addEventListener("animationend", () => releaseMenuShape(element));
+  element.addEventListener("pointerdown", handleMenuShapePointerDown);
+  return element;
+}
+
+function releaseMenuShape(element) {
+  element.className = "menu-shape";
+  menuRainState.active.delete(element);
+  element.__rainData = null;
+}
+
+function isDesktopPointer() {
+  return window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches || false;
+}
+
+function handleMenuShapePointerDown(event) {
+  if (!isDesktopPointer() || event.button !== 0 || event.pointerType !== "mouse") return;
+  const element = event.currentTarget;
+  if (!menuRainState.active.has(element)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  popMenuShape(element);
+}
+
+function popMenuShape(element) {
+  const rect = element.getBoundingClientRect();
+  const root = dom.menuRain.getBoundingClientRect();
+  const size = Math.max(1, rect.width || element.__rainData?.size || 22);
+  element.style.setProperty("--pop-x", `${(rect.left - root.left + rect.width / 2).toFixed(1)}px`);
+  element.style.setProperty("--pop-y", `${(rect.top - root.top + rect.height / 2).toFixed(1)}px`);
+  element.style.setProperty("--pop-half", `${(size / 2).toFixed(1)}px`);
+  element.style.setProperty("--size", `${size.toFixed(1)}px`);
+  element.className = `menu-shape menu-shape-${element.__rainData?.type || "circle"} is-popping`;
+}
+
+function clearMenuRain() {
+  window.clearTimeout(menuRainState.spawnTimer);
+  menuRainState.spawnTimer = null;
+  menuRainState.recentSpawns = [];
+  Array.from(menuRainState.active).forEach((element) => releaseMenuShape(element));
+}
+
+function pickMenuRainSpawn(size) {
+  const now = performance.now();
+  const width = Math.max(1, window.innerWidth);
+  const minGap = clamp(((size + 38) / width) * 100, 9, 18);
+  menuRainState.recentSpawns = menuRainState.recentSpawns.filter((entry) => now - entry.time < 1500);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const x = randomRange(4, 96);
+    const hasNearSpawn = menuRainState.recentSpawns.some((entry) => Math.abs(entry.x - x) < minGap);
+    if (hasNearSpawn) continue;
+    return { x, now };
+  }
+
+  return null;
+}
+
+function configureMenuShape(element) {
+  const type = MENU_RAIN_TYPES[Math.floor(Math.random() * MENU_RAIN_TYPES.length)];
+  const size = randomRange(15, type === "pentagon" ? 31 : 27) * (isDesktopPointer() ? 1.1 : 1);
+  const spawn = pickMenuRainSpawn(size);
+  if (!spawn) return false;
+
+  const duration = randomRange(10.5, 17.5);
+  const sway = randomRange(-34, 34);
+  const startRotation = randomRange(-30, 30);
+  const endRotation = startRotation + randomRange(140, 390) * (Math.random() < 0.5 ? -1 : 1);
+
+  element.className = `menu-shape menu-shape-${type}`;
+  element.style.setProperty("--size", `${size.toFixed(1)}px`);
+  element.style.setProperty("--x", `${spawn.x.toFixed(2)}vw`);
+  element.style.setProperty("--sway", `${sway.toFixed(1)}px`);
+  element.style.setProperty("--duration", `${duration.toFixed(2)}s`);
+  element.style.setProperty("--start-rotation", `${startRotation.toFixed(1)}deg`);
+  element.style.setProperty("--end-rotation", `${endRotation.toFixed(1)}deg`);
+  element.__rainData = { x: spawn.x, size, type, time: spawn.now };
+  menuRainState.recentSpawns.push({ x: spawn.x, time: spawn.now });
+  return true;
+}
+
+function syncMenuRain() {
+  if (!dom.menuRain) return;
+  const desiredCount = desiredMenuRainCount();
+
+  while (menuRainState.shapes.length < desiredCount) {
+    const element = createMenuShapeElement();
+    menuRainState.seed += 1;
+    menuRainState.shapes.push(element);
+    dom.menuRain.appendChild(element);
+  }
+
+  while (menuRainState.shapes.length > desiredCount) {
+    const inactiveIndex = menuRainState.shapes.findIndex((element) => !menuRainState.active.has(element));
+    if (inactiveIndex < 0) break;
+    const [element] = menuRainState.shapes.splice(inactiveIndex, 1);
+    releaseMenuShape(element);
+    element.remove();
+  }
+}
+
+function spawnMenuRainShape() {
+  if (!menuRainState.running || menuRainState.active.size >= desiredMenuRainCount()) return;
+  syncMenuRain();
+  const element = menuRainState.shapes.find((item) => !menuRainState.active.has(item));
+  if (!element || !configureMenuShape(element)) return;
+
+  menuRainState.active.add(element);
+  void element.offsetWidth;
+  element.classList.add("is-active");
+}
+
+function scheduleMenuRainSpawn(initial = false) {
+  window.clearTimeout(menuRainState.spawnTimer);
+  if (!menuRainState.running) return;
+  const delay = initial ? randomRange(360, 720) : menuRainSpawnDelay();
+  menuRainState.spawnTimer = window.setTimeout(() => {
+    spawnMenuRainShape();
+    scheduleMenuRainSpawn(false);
+  }, delay);
+}
+
+function setMenuRainActive(active, reset = false) {
+  if (!dom.menuRain) return;
+  syncMenuRain();
+  menuRainState.running = active;
+  dom.menuRain.classList.toggle("is-running", active);
+
+  if (!active) {
+    clearMenuRain();
+    return;
+  }
+
+  if (reset) clearMenuRain();
+  scheduleMenuRainSpawn(true);
+}
+
+function updateHud(stats, wave) {
+  dom.wave.textContent = `Волна ${wave}`;
+  dom.time.textContent = formatTime(stats.survivalMs);
+  dom.hpText.textContent = `${Math.ceil(stats.hp)} / ${stats.maxHp}`;
+  dom.hpFill.style.transform = `scaleX(${clamp(stats.hp / stats.maxHp, 0, 1)})`;
+  dom.level.textContent = `Level ${stats.level}`;
+  dom.expText.textContent = `${formatExpValue(stats.exp)} / ${stats.nextExp}`;
+  dom.expFill.style.transform = `scaleX(${clamp(stats.exp / stats.nextExp, 0, 1)})`;
+}
+
+function positionLevelToast() {
+  const hudRect = dom.hud.getBoundingClientRect();
+  const hudTop = runtime.settings?.hudPosition === "top";
+  dom.levelToast.classList.toggle("toast-below-hud", hudTop);
+
+  if (hudTop) {
+    const top = hudRect.height > 0 && !dom.hud.classList.contains("hidden")
+      ? hudRect.bottom + 10
+      : 148;
+    dom.levelToast.style.setProperty("--level-toast-top", `${Math.round(top)}px`);
+    return;
+  }
+
+  const bottom = hudRect.height > 0 && !dom.hud.classList.contains("hidden")
+    ? window.innerHeight - hudRect.top + 10
+    : 148;
+  dom.levelToast.style.setProperty("--level-toast-bottom", `${Math.round(bottom)}px`);
+}
+
+function resetLevelToast() {
+  window.cancelAnimationFrame(showLevelToast.frame);
+  window.clearTimeout(showLevelToast.timer);
+  window.clearTimeout(showHudLevelPulse.timer);
+  dom.levelToast.classList.remove("show");
+  dom.levelToast.textContent = "LEVEL UP";
+  dom.hud.classList.remove("level-pulse");
+}
+
+function showHudLevelPulse() {
+  window.clearTimeout(showHudLevelPulse.timer);
+  dom.hud.classList.remove("level-pulse");
+  void dom.hud.offsetWidth;
+  dom.hud.classList.add("level-pulse");
+  showHudLevelPulse.timer = window.setTimeout(() => dom.hud.classList.remove("level-pulse"), 980);
+}
+
+function showLevelToast(levelsGained = 1) {
+  window.cancelAnimationFrame(showLevelToast.frame);
+  window.clearTimeout(showLevelToast.timer);
+  dom.levelToast.classList.remove("show");
+  positionLevelToast();
+  dom.levelToast.textContent = levelsGained > 1 ? `LEVEL UP x${levelsGained}` : "LEVEL UP";
+  void dom.levelToast.offsetWidth;
+  showLevelToast.frame = window.requestAnimationFrame(() => {
+    dom.levelToast.classList.add("show");
+  });
+  showLevelToast.timer = window.setTimeout(() => dom.levelToast.classList.remove("show"), 1160);
+  showHudLevelPulse();
+}
+
+function showDamageFeedback() {
+  dom.damageVignette.classList.add("show");
+  window.clearTimeout(showDamageFeedback.timer);
+  showDamageFeedback.timer = window.setTimeout(() => dom.damageVignette.classList.remove("show"), 130);
+}
+
+function showGameOver(summary) {
+  resetLevelToast();
+  hidePauseScreen();
+  hideUpgradeScreen();
+  setPauseButtonVisible(false);
+  dom.statTime.textContent = summary.time;
+  dom.statLevel.textContent = String(summary.level);
+  dom.statWave.textContent = String(summary.wave);
+  dom.statKills.textContent = String(summary.kills);
+  dom.statExp.textContent = String(summary.exp);
+  prepareNicknamePanel(summary);
+  syncNicknamePanelPosition();
+  setNicknamePanelActive(true);
+  dom.hud.classList.add("hidden");
+  transitionTo(() => {
+    dom.gameOver.classList.add("screen-active");
+  });
+}
+
+function transitionTo(callback) {
+  dom.fadeLayer.classList.add("show");
+  window.setTimeout(() => {
+    callback();
+    dom.fadeLayer.classList.remove("show");
+  }, 185);
+}
+
+function hideScreens() {
+  dom.menu.classList.remove("screen-active");
+  dom.gameOver.classList.remove("screen-active");
+  dom.pauseScreen.classList.remove("screen-active");
+  dom.upgradeScreen.classList.remove("screen-active");
+  setNicknamePanelActive(false);
+  hideSettingsPanel();
+  hideLeaderboardPanel();
+}
+
+function showPauseScreen() {
+  dom.pauseScreen.classList.add("screen-active");
+}
+
+function hidePauseScreen() {
+  dom.pauseScreen.classList.remove("screen-active");
+}
+
+function showUpgradeScreen(choices) {
+  hidePauseScreen();
+  dom.upgradeOptions.innerHTML = "";
+  choices.forEach((choice, index) => {
+    const button = document.createElement("button");
+    const styleId = choice.styleId || choice.id.split("-")[0];
+    button.className = `upgrade-option upgrade-option-${styleId}`;
+    button.type = "button";
+    button.innerHTML = `
+      <span class="upgrade-badge">${choice.badge}</span>
+      <span class="upgrade-title">${choice.title}</span>
+      <span class="upgrade-description">${choice.description}</span>
+    `;
+    button.addEventListener("click", () => runtime.scene?.chooseUpgrade(index));
+    dom.upgradeOptions.appendChild(button);
+  });
+  dom.upgradeScreen.classList.add("screen-active");
+}
+
+function hideUpgradeScreen() {
+  dom.upgradeScreen.classList.remove("screen-active");
+  dom.upgradeOptions.innerHTML = "";
+}
+
+function showSettingsPanel() {
+  if (runtime.mode !== "menu") return;
+  if (isMobileViewport()) hideLeaderboardPanel();
+  syncSettingsPanelHeight();
+  dom.menu.classList.add("settings-open");
+  dom.settingsPanel.classList.add("open");
+  dom.settingsPanel.setAttribute("aria-hidden", "false");
+}
+
+function hideSettingsPanel() {
+  dom.menu.classList.remove("settings-open");
+  dom.settingsPanel.classList.remove("open");
+  dom.settingsPanel.setAttribute("aria-hidden", "true");
+}
+
+function toggleSettingsPanel() {
+  if (runtime.mode !== "menu") return;
+  if (dom.settingsPanel.classList.contains("open")) hideSettingsPanel();
+  else showSettingsPanel();
+}
+
+function setLeaderboardCategoryMenuOpen(open) {
+  dom.leaderboardCategoryMenu?.classList.toggle("open", open);
+  dom.leaderboardCategoryMenu?.setAttribute("aria-hidden", open ? "false" : "true");
+  dom.leaderboardCategoryButton?.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function formatLeaderboardValue(category, value) {
+  return leaderboards?.formatValue(category, value) || String(value ?? "—");
+}
+
+function setLeaderboardAnimation(element, index = 0) {
+  element.classList.remove("leaderboard-animate-in");
+  element.style.setProperty("--leaderboard-delay", `${Math.min(index * 42, 462)}ms`);
+  void element.offsetWidth;
+  element.classList.add("leaderboard-animate-in");
+}
+
+function renderLeaderboardRows(category, rows, playerRank) {
+  if (!dom.leaderboardList) return;
+  dom.leaderboardList.innerHTML = "";
+  const normalizedRows = Array.isArray(rows) ? rows.slice(0, 10) : [];
+  for (let i = 0; i < 10; i += 1) {
+    const row = normalizedRows[i];
+    const element = document.createElement("div");
+    element.className = `leaderboard-row${row ? "" : " is-empty"}`;
+    const place = document.createElement("span");
+    const name = document.createElement("span");
+    const value = document.createElement("span");
+    place.textContent = `${i + 1}.`;
+    name.textContent = row?.player_name || "—";
+    value.textContent = row ? formatLeaderboardValue(category, row.value) : "—";
+    element.append(place, name, value);
+    setLeaderboardAnimation(element, i);
+    dom.leaderboardList.appendChild(element);
+  }
+  dom.leaderboardPlayerRank.innerHTML = "";
+  const rank = playerRank?.rank_position || playerRank?.place || null;
+  if (playerRank && Number(rank) > 10) {
+    const place = document.createElement("span");
+    const name = document.createElement("span");
+    const value = document.createElement("span");
+    place.textContent = `${rank}.`;
+    name.textContent = playerRank.player_name || "Ты";
+    value.textContent = formatLeaderboardValue(category, playerRank.value);
+    dom.leaderboardPlayerRank.append(place, name, value);
+    dom.leaderboardPlayerRank.classList.add("show");
+    setLeaderboardAnimation(dom.leaderboardPlayerRank, 10);
+  } else {
+    dom.leaderboardPlayerRank.classList.remove("show");
+  }
+  syncSettingsPanelHeight();
+}
+
+function renderLeaderboardMessage(message) {
+  if (!dom.leaderboardList) return;
+  dom.leaderboardList.innerHTML = "";
+  const element = document.createElement("div");
+  element.className = "leaderboard-message";
+  element.textContent = message;
+  setLeaderboardAnimation(element, 0);
+  dom.leaderboardList.appendChild(element);
+  dom.leaderboardPlayerRank.innerHTML = "";
+  dom.leaderboardPlayerRank.classList.remove("show");
+  syncSettingsPanelHeight();
+}
+
+async function loadLeaderboard(category = runtime.leaderboardCategory, force = false) {
+  const service = leaderboards;
+  const requestId = runtime.leaderboardRequestId + 1;
+  runtime.leaderboardRequestId = requestId;
+  if (!service) {
+    renderLeaderboardMessage("Не удалось загрузить лидерборд");
+    return;
+  }
+  runtime.leaderboardCategory = service.labels[category] ? category : "score";
+  dom.leaderboardCategoryLabel.textContent = service.labels[runtime.leaderboardCategory];
+  dom.leaderboardCategoryMenu?.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.category === runtime.leaderboardCategory);
+  });
+  renderLeaderboardMessage("Загрузка...");
+  try {
+    const data = await service.loadCategory(runtime.leaderboardCategory, force);
+    if (requestId !== runtime.leaderboardRequestId) return;
+    renderLeaderboardRows(runtime.leaderboardCategory, data.top, data.playerRank);
+  } catch (error) {
+    if (requestId !== runtime.leaderboardRequestId) return;
+    renderLeaderboardMessage("Не удалось загрузить лидерборд");
+  }
+}
+
+function showLeaderboardPanel() {
+  if (runtime.mode !== "menu") return;
+  if (isMobileViewport()) hideSettingsPanel();
+  syncSettingsPanelHeight();
+  dom.menu.classList.add("leaderboard-open");
+  dom.leaderboardPanel.classList.add("open");
+  dom.leaderboardPanel.setAttribute("aria-hidden", "false");
+  loadLeaderboard(runtime.leaderboardCategory);
+}
+
+function hideLeaderboardPanel() {
+  dom.menu.classList.remove("leaderboard-open");
+  dom.leaderboardPanel?.classList.remove("open");
+  dom.leaderboardPanel?.setAttribute("aria-hidden", "true");
+  setLeaderboardCategoryMenuOpen(false);
+}
+
+function toggleLeaderboardPanel() {
+  if (runtime.mode !== "menu") return;
+  if (dom.leaderboardPanel.classList.contains("open")) hideLeaderboardPanel();
+  else showLeaderboardPanel();
+}
+
+function updateNicknameButton() {
+  const service = leaderboards;
+  if (!service || !dom.nicknameInput || !dom.nicknameSaveButton) return;
+  const value = service.normalizePlayerName(dom.nicknameInput.value);
+  const saved = service.getSavedPlayerName();
+  dom.nicknameSaveButton.disabled = !service.isValidPlayerName(value) || value === saved;
+}
+
+function setNicknameTaken(active) {
+  if (!dom.nicknamePanel || !dom.nicknameInput) return;
+  const message = active ? "Ник занят" : "";
+  dom.nicknamePanel.toggleAttribute("data-status", Boolean(message));
+  if (message) dom.nicknamePanel.setAttribute("data-status", message);
+  dom.nicknameInput.classList.toggle("is-error", active);
+}
+
+function setNicknameSubmitError(error) {
+  if (!dom.nicknamePanel || !dom.nicknameInput) return;
+  const messages = {
+    nickname_taken: "Ник занят",
+    nickname_invalid: "Ник 3-16 символов",
+    auth_failed: "Ошибка авторизации",
+    submit_failed: "Ошибка отправки",
+    leaderboard_unavailable: "Лидерборд недоступен",
+  };
+  if (error === "run_rejected") messages[error] = "Р РµР·СѓР»СЊС‚Р°С‚ РѕС‚РєР»РѕРЅРµРЅ";
+  if (error === "submit_cooldown") messages[error] = "РџРѕРІС‚РѕСЂРё С‡РµСЂРµР· 15 СЃРµРє.";
+  const message = messages[error] || "";
+  dom.nicknamePanel.toggleAttribute("data-status", Boolean(message));
+  if (message) dom.nicknamePanel.setAttribute("data-status", message);
+  dom.nicknameInput.classList.toggle("is-error", Boolean(message));
+}
+
+function sanitizeNicknameInput() {
+  const service = leaderboards;
+  if (!service || !dom.nicknameInput) return;
+  const sanitized = service.sanitizePlayerName
+    ? service.sanitizePlayerName(dom.nicknameInput.value)
+    : service.normalizePlayerName(dom.nicknameInput.value);
+  if (dom.nicknameInput.value !== sanitized) dom.nicknameInput.value = sanitized;
+  setNicknameTaken(false);
+}
+
+function prepareNicknamePanel(summary) {
+  const service = leaderboards;
+  if (!service) return;
+  const savedName = service.getSavedPlayerName();
+  if (dom.nicknameInput) dom.nicknameInput.value = service.sanitizePlayerName ? service.sanitizePlayerName(savedName) : savedName;
+  runtime.pendingLeaderboardRun = {
+    summary,
+    runId: runtime.leaderboardRun?.runId || "",
+    tracking: runtime.leaderboardRun || null,
+    submitted: false,
+    submitting: false,
+  };
+  updateNicknameButton();
+}
+
+function currentNicknameForSubmit() {
+  const service = leaderboards;
+  if (!service) return "";
+  sanitizeNicknameInput();
+  const typed = service.normalizePlayerName(dom.nicknameInput?.value || "");
+  if (!service.isValidPlayerName(typed)) return "";
+  const saved = service.savePlayerName(typed);
+  if (dom.nicknameInput && saved) dom.nicknameInput.value = saved;
+  updateNicknameButton();
+  return saved;
+}
+
+function submitPendingLeaderboardRun() {
+  const service = leaderboards;
+  const pending = runtime.pendingLeaderboardRun;
+  if (!service || !pending || pending.submitted || pending.submitting) return "skipped";
+  const name = currentNicknameForSubmit();
+  if (!name) {
+    pending.submitted = true;
+    runtime.pendingLeaderboardRun = null;
+    return "skipped";
+  }
+  const summary = {
+    ...pending.summary,
+    build: pending.summary?.build
+      ? {
+          skills: { ...(pending.summary.build.skills || {}) },
+          aidKits: pending.summary.build.aidKits || 0,
+        }
+      : null,
+  };
+  const initialRunId = pending.runId || pending.tracking?.runId || "";
+  const runIdPromise = initialRunId
+    ? Promise.resolve(initialRunId)
+    : pending.tracking?.promise
+      ? pending.tracking.promise.then((runId) => runId || pending.tracking?.runId || "")
+      : Promise.resolve("");
+  pending.submitting = true;
+  pending.submitted = true;
+  runtime.pendingLeaderboardRun = null;
+  runIdPromise
+    .then((runId) => {
+      if (!service.canSubmitRun(summary, name, runId)) return false;
+      return service.submitRun(summary, name, runId);
+    })
+    .then((submitted) => {
+      pending.submitting = false;
+      if (submitted && dom.leaderboardPanel?.classList.contains("open")) loadLeaderboard(runtime.leaderboardCategory, true);
+    })
+    .catch(() => {
+      pending.submitting = false;
+    });
+  return "started";
+}
+
+function saveNicknameFromInput() {
+  const service = leaderboards;
+  if (!service || !dom.nicknameInput) return;
+  sanitizeNicknameInput();
+  const saved = service.savePlayerName(dom.nicknameInput.value);
+  if (saved) {
+    dom.nicknameInput.value = saved;
+    updateNicknameButton();
+  }
+}
+
+function setPauseButtonVisible(visible) {
+  dom.pauseButton.classList.toggle("hidden", !visible);
+  dom.musicButton?.classList.toggle("hidden", !visible);
+  updateMusicButton();
+}
+
+
+"use strict";
+
+const MUSIC_STORAGE_KEY = "timeKillerMusicEnabled";
+const MUSIC_NORMAL_VOLUME = 0.25;
+const MUSIC_PAUSE_VOLUME = 0.1;
+const MUSIC_FADE_MS = 260;
+const musicState = {
+  audio: null,
+  fadeFrame: null,
+  fadeEndTimer: null,
+  pauseTimer: null,
+  runStarted: false,
+  savedTime: 0,
+  hasRunStartPosition: false,
+};
+
+function loadMusicEnabled() {
+  try {
+    const raw = window.localStorage?.getItem(MUSIC_STORAGE_KEY);
+    if (raw === null || raw === undefined) return true;
+    return raw !== "false";
+  } catch (error) {
+    return true;
+  }
+}
+
+function saveMusicEnabled() {
+  try {
+    window.localStorage?.setItem(MUSIC_STORAGE_KEY, runtime.musicEnabled ? "true" : "false");
+  } catch (error) {}
+}
+
+function ensureMusicAudio() {
+  if (!musicState.audio) {
+    const audio = new Audio("music.mp3");
+    audio.loop = true;
+    audio.preload = "metadata";
+    audio.volume = 0;
+    musicState.audio = audio;
+  }
+  return musicState.audio;
+}
+
+function updateMusicButton() {
+  if (!dom.musicButton) return;
+  dom.musicButton.classList.toggle("is-off", !runtime.musicEnabled);
+  dom.musicButton.setAttribute("aria-pressed", runtime.musicEnabled ? "true" : "false");
+  dom.musicButton.setAttribute("aria-label", runtime.musicEnabled ? "Music on" : "Music off");
+}
+
+function musicTargetVolume() {
+  if (!musicState.runStarted || runtime.mode === "menu") return 0;
+  if (!runtime.musicEnabled) return 0;
+  if (runtime.mode === "paused") return MUSIC_PAUSE_VOLUME;
+  return MUSIC_NORMAL_VOLUME;
+}
+
+function setMusicGainNow(value) {
+  const target = clamp(value, 0, 1);
+  if (musicState.audio) musicState.audio.volume = target;
+}
+
+function cancelMusicFade() {
+  window.cancelAnimationFrame(musicState.fadeFrame);
+  window.clearTimeout(musicState.fadeEndTimer);
+  window.clearTimeout(musicState.pauseTimer);
+  musicState.fadeFrame = null;
+  musicState.fadeEndTimer = null;
+  musicState.pauseTimer = null;
+}
+
+function fadeMusicVolume(targetVolume, options = {}) {
+  const audio = ensureMusicAudio();
+  const duration = options.duration ?? MUSIC_FADE_MS;
+  const pauseWhenDone = options.pauseWhenDone || false;
+  const resetWhenDone = options.resetWhenDone || false;
+  const target = clamp(targetVolume, 0, 1);
+  cancelMusicFade();
+
+  const finish = () => {
+    audio.volume = target;
+    if (pauseWhenDone) {
+      musicState.pauseTimer = window.setTimeout(() => {
+        if (!resetWhenDone && Number.isFinite(audio.currentTime)) {
+          musicState.savedTime = audio.currentTime;
+        }
+        audio.pause();
+        if (resetWhenDone) {
+          try {
+            audio.currentTime = 0;
+          } catch (error) {}
+        }
+      }, 70);
+    } else if (resetWhenDone) {
+      try {
+        audio.currentTime = 0;
+      } catch (error) {}
+    }
+  };
+
+  if (target > 0 && audio.paused) {
+    setMusicGainNow(0);
+    const playResult = audio.play();
+    if (playResult?.catch) playResult.catch(() => {});
+  }
+
+  if (duration <= 0 || Math.abs(audio.volume - target) < 0.01) {
+    finish();
+    return;
+  }
+
+  const startVolume = audio.volume;
+  const startTime = performance.now();
+  const step = () => {
+    const progress = clamp((performance.now() - startTime) / duration, 0, 1);
+    const eased = progress < 0.5
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+    audio.volume = startVolume + (target - startVolume) * eased;
+    if (progress >= 1) {
+      musicState.fadeFrame = null;
+      finish();
+      return;
+    }
+    musicState.fadeFrame = window.requestAnimationFrame(step);
+  };
+  musicState.fadeFrame = window.requestAnimationFrame(step);
+}
+
+function syncMusicVolume(options = {}) {
+  fadeMusicVolume(musicTargetVolume(), options);
+}
+
+function startRunMusic() {
+  musicState.runStarted = true;
+  updateMusicButton();
+  if (!runtime.musicEnabled) return;
+
+  const audio = ensureMusicAudio();
+  cancelMusicFade();
+  const startPlayback = () => {
+    if (!musicState.runStarted) return;
+    if (!musicState.hasRunStartPosition && Number.isFinite(audio.duration) && audio.duration > 2) {
+      try {
+        audio.currentTime = Math.random() * Math.max(1, audio.duration - 1);
+        musicState.hasRunStartPosition = true;
+      } catch (error) {}
+    } else if (musicState.savedTime > 0 && Number.isFinite(audio.duration)) {
+      try {
+        audio.currentTime = Math.min(musicState.savedTime, Math.max(0, audio.duration - 0.5));
+      } catch (error) {}
+    }
+    setMusicGainNow(0);
+    const playResult = audio.play();
+    if (playResult?.then) {
+      playResult
+        .then(() => syncMusicVolume())
+        .catch(() => {});
+    } else {
+      syncMusicVolume();
+    }
+  };
+
+  if (audio.readyState >= 1) {
+    startPlayback();
+  } else {
+    setMusicGainNow(0);
+    audio.addEventListener("loadedmetadata", startPlayback, { once: true });
+    audio.load();
+    const primeResult = audio.play();
+    if (primeResult?.catch) primeResult.catch(() => {});
+  }
+}
+
+function stopRunMusic(immediate = false) {
+  musicState.runStarted = false;
+  musicState.savedTime = 0;
+  musicState.hasRunStartPosition = false;
+  if (!musicState.audio) return;
+  fadeMusicVolume(0, {
+    duration: immediate ? 0 : MUSIC_FADE_MS,
+    pauseWhenDone: true,
+    resetWhenDone: true,
+  });
+}
+
+function setMusicPaused(paused) {
+  if (!musicState.runStarted || !runtime.musicEnabled) return;
+  syncMusicVolume({ duration: MUSIC_FADE_MS });
+}
+
+function setMusicEnabled(enabled) {
+  runtime.musicEnabled = Boolean(enabled);
+  saveMusicEnabled();
+  updateMusicButton();
+
+  if (!musicState.runStarted) return;
+  if (!runtime.musicEnabled) {
+    if (musicState.audio && Number.isFinite(musicState.audio.currentTime)) {
+      musicState.savedTime = musicState.audio.currentTime;
+    }
+    syncMusicVolume({ duration: MUSIC_FADE_MS, pauseWhenDone: true });
+    return;
+  }
+
+  if (!musicState.audio) {
+    startRunMusic();
+    return;
+  }
+
+  if (musicState.audio.paused && musicState.savedTime > 0 && Number.isFinite(musicState.audio.duration)) {
+    try {
+      musicState.audio.currentTime = Math.min(musicState.savedTime, Math.max(0, musicState.audio.duration - 0.5));
+    } catch (error) {}
+  }
+  syncMusicVolume({ duration: MUSIC_FADE_MS });
+}
+
+function toggleMusic() {
+  setMusicEnabled(!runtime.musicEnabled);
+}
+
+
+"use strict";
+
+const leaderboards = (() => {
+  const PROJECT_URL = "https://hbojcmkohqxwirysdalg.supabase.co";
+  const PUBLISHABLE_KEY = "sb_publishable_stgEvQyS4pIa85D6Qei08A_wui0kw7v";
+  const PLAYER_NAME_KEY = "timeKillerPlayerName";
+  const CACHE_MS = 60000;
+  const CATEGORY_LABELS = {
+    score: "Очки",
+    time: "Время",
+    kills: "Убийства",
+  };
+  const ABILITY_MAX_LEVELS = {
+    razer: 3,
+    shooter: 3,
+    bazooka: 3,
+    arrow: 3,
+    masochism: 3,
+    bloody: 3,
+    knockback: 2,
+    energyDrink: 3,
+    thor: 3,
+  };
+  const state = {
+    client: null,
+    sessionPromise: null,
+    cache: new Map(),
+    submitError: "",
+    checkpointInFlight: false,
+  };
+
+  function createClient() {
+    if (state.client) return state.client;
+    if (!window.supabase?.createClient) return null;
+    state.client = window.supabase.createClient(PROJECT_URL, PUBLISHABLE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
+    });
+    return state.client;
+  }
+
+  async function ensureSession() {
+    const client = createClient();
+    if (!client?.auth) return null;
+    if (state.sessionPromise) return state.sessionPromise;
+    state.sessionPromise = (async () => {
+      try {
+        const current = await client.auth.getSession();
+        if (current.data?.session) return current.data.session;
+        const anonymous = await client.auth.signInAnonymously();
+        if (anonymous.error) return null;
+        return anonymous.data?.session || null;
+      } catch (error) {
+        return null;
+      } finally {
+        state.sessionPromise = null;
+      }
+    })();
+    return state.sessionPromise;
+  }
+
+  function normalizePlayerName(value) {
+    return String(value || "").trim();
+  }
+
+  function sanitizePlayerName(value) {
+    return normalizePlayerName(value).replace(/[^A-Za-zА-Яа-яЁё0-9_-]/gu, "").slice(0, 16);
+  }
+
+  function isValidPlayerName(value) {
+    const name = normalizePlayerName(value);
+    return /^[A-Za-zА-Яа-яЁё0-9_-]{3,16}$/u.test(name);
+  }
+
+  function getSavedPlayerName() {
+    try {
+      const value = window.localStorage?.getItem(PLAYER_NAME_KEY) || "";
+      return isValidPlayerName(value) ? normalizePlayerName(value) : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function savePlayerName(value) {
+    const name = normalizePlayerName(value);
+    if (!isValidPlayerName(name)) return "";
+    try {
+      window.localStorage?.setItem(PLAYER_NAME_KEY, name);
+    } catch (error) {}
+    return name;
+  }
+
+  function roundNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.round(number) : NaN;
+  }
+
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+  }
+
+  function normalizeBuild(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const rawSkills = source.skills && typeof source.skills === "object" ? source.skills : {};
+    const skills = {};
+    Object.keys(rawSkills).forEach((id) => {
+      const maxLevel = ABILITY_MAX_LEVELS[id];
+      const level = roundNumber(rawSkills[id]);
+      if (!maxLevel || !Number.isFinite(level) || level <= 0) return;
+      skills[id] = Math.min(maxLevel, level);
+    });
+    const rawAidKits = roundNumber(source.aidKits || 0);
+    const aidKits = Number.isFinite(rawAidKits) ? Math.max(0, Math.min(99, rawAidKits)) : 0;
+    return { skills, aidKits };
+  }
+
+  function buildUpgradeCount(build) {
+    const skills = build?.skills || {};
+    return Object.keys(skills).reduce((sum, id) => sum + Math.max(0, roundNumber(skills[id])), 0) + Math.max(0, roundNumber(build?.aidKits || 0));
+  }
+
+  function buildMetricsPayload(summary, runId) {
+    const build = normalizeBuild(summary?.build);
+    const payload = {
+      runId: String(runId || summary?.runId || ""),
+      score: roundNumber(summary?.score),
+      survivalTime: roundNumber(summary?.survivalTime),
+      kills: roundNumber(summary?.kills),
+      wave: roundNumber(summary?.wave),
+      level: roundNumber(summary?.level),
+      exp: roundNumber(summary?.expValue ?? summary?.exp),
+      deviceType: summary?.deviceType === "mobile" ? "mobile" : "desktop",
+      build,
+    };
+    if (!isUuid(payload.runId)) return null;
+    if (payload.score < 0 || payload.score > 50000) return null;
+    if (payload.survivalTime < 10 || payload.survivalTime > 3600) return null;
+    if (payload.kills < 0 || payload.kills > 100000) return null;
+    if (payload.wave < 1 || payload.wave > 1000) return null;
+    if (payload.level < 1 || payload.level > 100) return null;
+    if (payload.exp < 0 || payload.exp > 50000) return null;
+    if (!Number.isFinite(payload.score + payload.survivalTime + payload.kills + payload.wave + payload.level + payload.exp)) return null;
+    if (payload.wave > Math.floor(payload.survivalTime / 10) + 5) return null;
+    if (payload.kills > payload.survivalTime * 6.5 + 160) return null;
+    if (payload.exp > payload.survivalTime * 70 + 1000) return null;
+    if (payload.level > Math.floor(payload.survivalTime / 12) + 8) return null;
+    if (buildUpgradeCount(build) > Math.floor(payload.level / 3) + 2) return null;
+    const maxScore = Math.min(50000, payload.survivalTime * 75 + 1000);
+    if (payload.score > maxScore || Math.abs(payload.score - payload.exp) > 5) return null;
+    return payload;
+  }
+
+  function buildRunPayload(summary, playerName, runId) {
+    const name = normalizePlayerName(playerName);
+    const payload = buildMetricsPayload(summary, runId);
+    if (!payload || !isValidPlayerName(name)) return null;
+    payload.playerName = name;
+    return payload;
+  }
+
+  function buildCheckpointPayload(summary, runId) {
+    return buildMetricsPayload(summary, runId);
+  }
+
+  function canSubmitRun(summary, playerName, runId) {
+    return Boolean(buildRunPayload(summary, playerName, runId));
+  }
+
+  async function startRun() {
+    state.submitError = "";
+    const session = await ensureSession();
+    const client = createClient();
+    if (!client) {
+      state.submitError = "leaderboard_unavailable";
+      return "";
+    }
+    if (!session) {
+      state.submitError = "auth_failed";
+      return "";
+    }
+    try {
+      const result = await client.rpc("start_leaderboard_run");
+      if (result.error) {
+        state.submitError = parseSubmitError(result.error);
+        return "";
+      }
+      return isUuid(result.data) ? result.data : "";
+    } catch (error) {
+      state.submitError = parseSubmitError(error);
+      return "";
+    }
+  }
+
+  async function submitRun(summary, playerName, runId) {
+    const payload = buildRunPayload(summary, playerName, runId);
+    if (!payload) return false;
+    state.submitError = "";
+    const session = await ensureSession();
+    const client = createClient();
+    if (!client) {
+      state.submitError = "leaderboard_unavailable";
+      return false;
+    }
+    if (!session) {
+      state.submitError = "auth_failed";
+      return false;
+    }
+    try {
+      const result = await client.rpc("submit_leaderboard_run", {
+        p_run_id: payload.runId,
+        p_player_name: payload.playerName,
+        p_score: payload.score,
+        p_survival_time: payload.survivalTime,
+        p_kills: payload.kills,
+        p_wave: payload.wave,
+        p_level: payload.level,
+        p_exp: payload.exp,
+        p_device_type: payload.deviceType,
+        p_build: payload.build,
+      });
+      if (result.error) {
+        state.submitError = parseSubmitError(result.error);
+        return false;
+      }
+      if (result.data !== true) {
+        state.submitError = "run_rejected";
+        return false;
+      }
+      state.cache.clear();
+      return true;
+    } catch (error) {
+      state.submitError = parseSubmitError(error);
+      return false;
+    }
+  }
+
+  async function submitCheckpoint(summary, runId) {
+    if (state.checkpointInFlight) return false;
+    const payload = buildCheckpointPayload(summary, runId);
+    if (!payload) return false;
+    const client = createClient();
+    if (!client) return false;
+    state.checkpointInFlight = true;
+    try {
+      await ensureSession();
+      const result = await client.rpc("submit_leaderboard_checkpoint", {
+        p_run_id: payload.runId,
+        p_score: payload.score,
+        p_survival_time: payload.survivalTime,
+        p_kills: payload.kills,
+        p_wave: payload.wave,
+        p_level: payload.level,
+        p_exp: payload.exp,
+        p_build: payload.build,
+      });
+      return !result.error;
+    } catch (error) {
+      return false;
+    } finally {
+      state.checkpointInFlight = false;
+    }
+  }
+
+  function parseSubmitError(error) {
+    const text = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
+    if (text.includes("nickname_taken")) return "nickname_taken";
+    if (text.includes("invalid_player_name") || text.includes("value too long") || text.includes("character varying(8)") || text.includes("character varying(12)")) return "nickname_invalid";
+    if (text.includes("auth_required")) return "auth_failed";
+    if (text.includes("submit_cooldown") || text.includes("start_cooldown")) return "submit_cooldown";
+    if (text.includes("run_not_active") || text.includes("run_already_submitted") || text.includes("invalid_run_id") || text.includes("run_rejected") || text.includes("invalid_elapsed_time") || text.includes("invalid_run_values") || text.includes("invalid_score")) return "run_rejected";
+    return "submit_failed";
+  }
+
+  function getSubmitError() {
+    return state.submitError;
+  }
+
+  function normalizeCategory(category) {
+    return CATEGORY_LABELS[category] ? category : "score";
+  }
+
+  async function loadCategory(category, force = false) {
+    const key = normalizeCategory(category);
+    const cached = state.cache.get(key);
+    const now = Date.now();
+    if (!force && cached && now - cached.loadedAt < CACHE_MS) return cached.data;
+    const client = createClient();
+    if (!client) throw new Error("leaderboard_unavailable");
+    await ensureSession();
+    const topResult = await client.rpc("get_leaderboard_top", { p_category: key });
+    if (topResult.error) throw topResult.error;
+    let playerRank = null;
+    try {
+      const rankResult = await client.rpc("get_leaderboard_player_rank", { p_category: key });
+      if (!rankResult.error) {
+        playerRank = Array.isArray(rankResult.data) ? rankResult.data[0] || null : rankResult.data || null;
+      }
+    } catch (error) {
+      playerRank = null;
+    }
+    const data = {
+      top: Array.isArray(topResult.data) ? topResult.data : [],
+      playerRank,
+    };
+    state.cache.set(key, { loadedAt: now, data });
+    return data;
+  }
+
+  function formatValue(category, value) {
+    const number = roundNumber(value);
+    if (!Number.isFinite(number)) return "—";
+    if (category === "time") {
+      const minutes = Math.floor(number / 60);
+      const seconds = number % 60;
+      return `${minutes} м. ${seconds} с.`;
+    }
+    return String(number);
+  }
+
+  ensureSession();
+
+  return Object.freeze({
+    labels: CATEGORY_LABELS,
+    loadCategory,
+    startRun,
+    submitRun,
+    submitCheckpoint,
+    canSubmitRun,
+    getSubmitError,
+    getSavedPlayerName,
+    savePlayerName,
+    normalizePlayerName,
+    sanitizePlayerName,
+    isValidPlayerName,
+    formatValue,
+  });
+})();
+
+
 (() => {
   "use strict";
 
@@ -2384,3 +4573,6 @@
   }
 
 })();
+
+})();
+
