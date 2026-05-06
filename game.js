@@ -204,6 +204,116 @@
     }
   }
 
+  class EnemyProjectile {
+    constructor(scene) {
+      this.scene = scene;
+      this.sprite = scene.physics.add.image(0, 0, "illusorBulletTexture");
+      this.sprite.setDepth(6);
+      this.sprite.setCircle(ILLUSOR_CONFIG.projectileRadius, 7 - ILLUSOR_CONFIG.projectileRadius, 7 - ILLUSOR_CONFIG.projectileRadius);
+      this.sprite.setActive(false).setVisible(false);
+      this.sprite.body.enable = false;
+      this.trail = scene.add.graphics();
+      this.trail.setDepth(4);
+      this.active = false;
+      this.fading = false;
+      this.spawnedAt = 0;
+      this.startX = 0;
+      this.startY = 0;
+      this.damage = ILLUSOR_CONFIG.projectileDamage;
+      this.radius = ILLUSOR_CONFIG.projectileRadius;
+      this.lifeMs = ILLUSOR_CONFIG.projectileLifeMs;
+      this.maxDistance = ILLUSOR_CONFIG.projectileMaxDistance;
+    }
+
+    fire(x, y, dirX, dirY, now, options = {}) {
+      this.scene.tweens.killTweensOf(this.sprite);
+      const speed = options.speed ?? ILLUSOR_CONFIG.projectileSpeed;
+      this.damage = options.damage ?? ILLUSOR_CONFIG.projectileDamage;
+      this.radius = options.radius ?? ILLUSOR_CONFIG.projectileRadius;
+      this.lifeMs = options.lifeMs ?? ILLUSOR_CONFIG.projectileLifeMs;
+      this.maxDistance = options.maxDistance ?? ILLUSOR_CONFIG.projectileMaxDistance;
+      this.startX = x;
+      this.startY = y;
+      this.spawnedAt = now;
+      this.sprite.setPosition(x, y);
+      this.sprite.setActive(true).setVisible(true);
+      this.sprite.setAlpha(1);
+      this.sprite.setScale(1);
+      this.sprite.setRotation(Math.atan2(dirY, dirX));
+      this.sprite.setCircle(this.radius, this.sprite.frame.width / 2 - this.radius, this.sprite.frame.height / 2 - this.radius);
+      this.sprite.body.enable = true;
+      this.sprite.body.setVelocity(dirX * speed, dirY * speed);
+      this.active = true;
+      this.fading = false;
+      this.drawTrail();
+    }
+
+    update(player, now) {
+      if (!this.active) return;
+      const traveled = Phaser.Math.Distance.Between(this.startX, this.startY, this.sprite.x, this.sprite.y);
+      if (now - this.spawnedAt > this.lifeMs || traveled > this.maxDistance) {
+        this.disable(true);
+        return;
+      }
+
+      const distance = Phaser.Math.Distance.Between(player.body.x, player.body.y, this.sprite.x, this.sprite.y);
+      if (distance <= player.radius + this.radius) {
+        this.scene.damagePlayer(this.damage);
+        this.disable(true);
+        return;
+      }
+
+      this.drawTrail();
+    }
+
+    drawTrail() {
+      const body = this.sprite.body;
+      const vx = body ? body.velocity.x : 0;
+      const vy = body ? body.velocity.y : 0;
+      const len = Math.hypot(vx, vy) || 1;
+      const tx = this.sprite.x - (vx / len) * 16;
+      const ty = this.sprite.y - (vy / len) * 16;
+      this.trail.clear();
+      this.trail.lineStyle(3, 0xf08a8e, 0.18);
+      this.trail.lineBetween(tx, ty, this.sprite.x, this.sprite.y);
+    }
+
+    disable(animated = true) {
+      if (this.fading && animated) return;
+      this.active = false;
+      this.sprite.body.enable = false;
+      this.sprite.body.setVelocity(0, 0);
+      this.trail.clear();
+
+      if (!animated || !this.sprite.visible) {
+        this.scene.tweens.killTweensOf(this.sprite);
+        this.fading = false;
+        this.sprite.setActive(false).setVisible(false);
+        this.sprite.setAlpha(1);
+        this.sprite.setScale(1);
+        return;
+      }
+
+      this.fading = true;
+      this.sprite.setActive(false);
+      this.scene.tweens.killTweensOf(this.sprite);
+      this.scene.tweens.add({
+        targets: this.sprite,
+        alpha: 0,
+        scaleX: 0.25,
+        scaleY: 0.25,
+        duration: CONFIG.bulletFadeMs,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          this.fading = false;
+          this.sprite.setVisible(false);
+          this.sprite.setAlpha(1);
+          this.sprite.setScale(1);
+        },
+      });
+    }
+  }
+
   class ExpPickup {
     constructor(scene) {
       this.scene = scene;
@@ -347,9 +457,11 @@
       this.state = "menu";
       this.enemyPool = [];
       this.bulletPool = [];
+      this.enemyProjectilePool = [];
       this.expPool = [];
       this.activeEnemies = [];
       this.activeBullets = [];
+      this.activeEnemyProjectiles = [];
       this.activeExp = [];
       this.deathEffects = [];
       this.razerBlades = [];
@@ -497,6 +609,16 @@
         g.destroy();
       }
 
+      if (!this.textures.exists("illusorBulletTexture")) {
+        const g = this.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(0xe86f7b, 1);
+        g.fillCircle(7, 7, 5.45);
+        g.lineStyle(1, 0xffc2c8, 0.45);
+        g.strokeCircle(7, 7, 5.45);
+        g.generateTexture("illusorBulletTexture", 14, 14);
+        g.destroy();
+      }
+
       if (!this.textures.exists("arrowTexture")) {
         const g = this.make.graphics({ x: 0, y: 0, add: false });
         g.fillStyle(0x6ea9ff, 1);
@@ -604,6 +726,12 @@
         this.bulletGroup.add(bullet.sprite);
       }
 
+      for (let i = 0; i < 90; i += 1) {
+        const projectile = new EnemyProjectile(this);
+        projectile.disable(false);
+        this.enemyProjectilePool.push(projectile);
+      }
+
       for (let i = 0; i < 260; i += 1) {
         const pickup = new ExpPickup(this);
         pickup.disable();
@@ -634,6 +762,7 @@
     pauseForMenu() {
       this.state = "menu";
       this.clearJoystick();
+      this.clearEnemyProjectiles(false);
       this.player.resetVisual();
       stopRunMusic(true);
       this.tweens.resumeAll();
@@ -670,6 +799,7 @@
       this.player.currentVelocity.set(0, 0);
       this.player.body.setVelocity(0, 0);
       this.player.resetVisual();
+      this.clearEnemyProjectiles(false);
       this.physics.pause();
       this.tweens.pauseAll();
       setMusicPaused(true);
@@ -748,6 +878,7 @@
 
       this.enemyPool.forEach((enemy) => enemy.disable());
       this.bulletPool.forEach((bullet) => bullet.disable(false));
+      this.enemyProjectilePool.forEach((projectile) => projectile.disable(false));
       this.expPool.forEach((pickup) => pickup.disable());
       this.clearDeathEffects();
       this.clearRazer();
@@ -755,6 +886,7 @@
       this.clearJoystick();
       this.activeEnemies = [];
       this.activeBullets = [];
+      this.activeEnemyProjectiles = [];
       this.activeExp = [];
       resetLevelToast();
       hidePauseScreen();
@@ -784,6 +916,7 @@
       this.updateRazer(safeDelta, time);
       this.updateThor(this.stats.survivalMs);
       this.updateBullets(time);
+      this.updateEnemyProjectiles(time);
       this.updateExp(time, safeDelta);
       if (this.state !== "playing") {
         updateHud(this.stats, this.waveDirector.wave);
@@ -971,6 +1104,17 @@
         this.resolveBulletHit(bullet);
         if (!bullet.active) continue;
         bullet.update(time);
+      }
+    }
+
+    updateEnemyProjectiles(time) {
+      for (let i = this.activeEnemyProjectiles.length - 1; i >= 0; i -= 1) {
+        const projectile = this.activeEnemyProjectiles[i];
+        if (!projectile.active) {
+          this.activeEnemyProjectiles.splice(i, 1);
+          continue;
+        }
+        projectile.update(this.player, time);
       }
     }
 
@@ -1326,6 +1470,30 @@
       }
     }
 
+    spawnIllusorBoss() {
+      if (!this.player?.body || this.state !== "playing") return false;
+      const enemy = this.getFreeEnemy();
+      if (!enemy) return false;
+      const view = this.currentGameplayView();
+      const radius = ILLUSOR_CONFIG.radius;
+      const px = this.player.body.x;
+      const py = this.player.body.y;
+      const distance = clamp(Math.max(view.width, view.height) * 0.34, 260, 460);
+      let x = px + distance;
+      let y = py - distance * 0.28;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const angle = -0.55 + attempt * 0.72;
+        const candidateX = px + Math.cos(angle) * distance;
+        const candidateY = py + Math.sin(angle) * distance;
+        x = clamp(candidateX, view.x + radius + 22, view.right - radius - 22);
+        y = clamp(candidateY, view.y + radius + 22, view.bottom - radius - 22);
+        if (Phaser.Math.Distance.Between(px, py, x, y) > this.player.radius + radius + 34) break;
+      }
+      enemy.spawnIllusor(x, y, this.waveDirector.wave);
+      this.activeEnemies.push(enemy);
+      return true;
+    }
+
     randomSpawnPoint() {
       const view = this.currentGameplayView();
       const safe = 18;
@@ -1395,8 +1563,78 @@
       return this.bulletPool.find((bullet) => !bullet.active && !bullet.fading);
     }
 
+    getFreeEnemyProjectile() {
+      return this.enemyProjectilePool.find((projectile) => !projectile.active && !projectile.fading);
+    }
+
     getFreeExp() {
       return this.expPool.find((pickup) => !pickup.active && !pickup.collecting);
+    }
+
+    onIllusorFormEntered(enemy, key) {
+      if (!enemy?.active || !enemy.isIllusor) return;
+      if (key === "blueSquare") {
+        this.spawnIllusorMinions(enemy);
+      } else if (key === "redCircle") {
+        this.fireIllusorRadial(enemy, 8, 0);
+      }
+    }
+
+    spawnIllusorMinions(enemy) {
+      const total = 8;
+      const distance = enemy.radius + 54;
+      const types = [ENEMY_TYPES.redCircle, ENEMY_TYPES.blueSquare];
+
+      for (let i = 0; i < total; i += 1) {
+        const minion = this.getFreeEnemy();
+        if (!minion) return;
+        const angle = (i / total) * Math.PI * 2;
+        const type = types[i % 2];
+        let x = enemy.container.x + Math.cos(angle) * distance;
+        let y = enemy.container.y + Math.sin(angle) * distance;
+
+        if (Phaser.Math.Distance.Between(this.player.body.x, this.player.body.y, x, y) < this.player.radius + type.radius + 28) {
+          x = enemy.container.x + Math.cos(angle) * (distance + 58);
+          y = enemy.container.y + Math.sin(angle) * (distance + 58);
+        }
+
+        minion.spawn(x, y, type, this.waveDirector.wave);
+        minion.exp = 0;
+        minion.container.setAlpha(0);
+        minion.container.setScale(0.45);
+        this.activeEnemies.push(minion);
+        this.tweens.add({
+          targets: minion.container,
+          alpha: 1,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 180,
+          ease: "Sine.easeOut",
+        });
+      }
+    }
+
+    fireIllusorRadial(enemy, count, offset = 0) {
+      if (!enemy?.active || !this.player?.body) return;
+      for (let i = 0; i < count; i += 1) {
+        const projectile = this.getFreeEnemyProjectile();
+        if (!projectile) return;
+        const angle = offset + (i / count) * Math.PI * 2;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const x = enemy.container.x + dirX * Math.max(18, enemy.radius * 0.72);
+        const y = enemy.container.y + dirY * Math.max(18, enemy.radius * 0.72);
+        projectile.fire(x, y, dirX, dirY, this.time.now);
+        this.activeEnemyProjectiles.push(projectile);
+      }
+    }
+
+    clearEnemyProjectiles(animated = false) {
+      this.activeEnemyProjectiles.forEach((projectile) => projectile.disable(animated));
+      this.activeEnemyProjectiles = [];
+      this.enemyProjectilePool.forEach((projectile) => {
+        if (projectile.active || projectile.fading) projectile.disable(animated);
+      });
     }
 
     killEnemy(enemy) {
@@ -1405,9 +1643,11 @@
       const expValue = roundExpValue(enemy.exp * waveExpMultiplier(enemy.spawnWave || this.waveDirector.wave));
       const color = enemy.type.color;
       const radius = enemy.radius;
+      const wasIllusor = enemy.isIllusor;
       enemy.kill();
       this.stats.kills += 1;
-      this.dropExpReward(x, y, expValue, radius);
+      if (wasIllusor) this.clearEnemyProjectiles(true);
+      if (expValue > 0) this.dropExpReward(x, y, expValue, radius);
       this.makeKillFeedback(x, y, radius, color);
     }
 
@@ -2305,9 +2545,11 @@
 
   dom.playButton.addEventListener("click", beginGame);
   dom.restartButton.addEventListener("click", () => {
+    submitPendingLeaderboardRun();
     beginGame();
   });
   dom.menuButton.addEventListener("click", () => {
+    submitPendingLeaderboardRun();
     returnToMenu();
   });
   dom.leaderboardButton?.addEventListener("click", toggleLeaderboardPanel);
@@ -2356,6 +2598,7 @@
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) scheduleForceResize();
   });
+  window.supersecretboss = () => runtime.scene?.spawnIllusorBoss?.() || false;
   runtime.settings = loadSettings();
   runtime.musicEnabled = loadMusicEnabled();
   updateMusicButton();

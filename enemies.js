@@ -36,6 +36,15 @@ class Enemy {
     this.knockbackMovementLockUntil = 0;
     this.knockbackX = 0;
     this.knockbackY = 0;
+    this.isIllusor = false;
+    this.illusorFormKey = "blueSquare";
+    this.illusorBaseSpeed = 0;
+    this.illusorTransform = null;
+    this.illusorTransformTween = null;
+    this.nextIllusorTransformAt = 0;
+    this.nextIllusorShotAt = 0;
+    this.illusorShotCycle = 0;
+    this.damageTakenMultiplier = 1;
     this.lastDamageAt = -9999;
     this.shape = null;
     this.healthBar = scene.add.graphics();
@@ -44,6 +53,16 @@ class Enemy {
   }
 
   spawn(x, y, type, wave) {
+    this.isIllusor = false;
+    this.illusorFormKey = "blueSquare";
+    this.illusorBaseSpeed = 0;
+    if (this.illusorTransformTween) this.illusorTransformTween.stop();
+    this.illusorTransform = null;
+    this.illusorTransformTween = null;
+    this.nextIllusorTransformAt = 0;
+    this.nextIllusorShotAt = 0;
+    this.illusorShotCycle = 0;
+    this.damageTakenMultiplier = 1;
     this.type = type;
     this.radius = type.radius;
     this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 0.936));
@@ -101,8 +120,54 @@ class Enemy {
     this.clearHealthBar();
   }
 
+  spawnIllusor(x, y, wave) {
+    this.isIllusor = true;
+    this.illusorFormKey = "blueSquare";
+    this.illusorBaseSpeed = ILLUSOR_CONFIG.baseSpeed;
+    this.radius = ILLUSOR_CONFIG.radius;
+    this.separationRadius = this.radius * 0.82;
+    this.maxHp = ILLUSOR_CONFIG.hp;
+    this.hp = this.maxHp;
+    this.damage = ILLUSOR_CONFIG.damage;
+    this.exp = ILLUSOR_CONFIG.exp;
+    this.spawnWave = wave;
+    this.slowUntil = 0;
+    this.slowMultiplier = 1;
+    this.clearBleed();
+    this.dashUntil = 0;
+    this.dashInertiaUntil = 0;
+    this.dashX = 0;
+    this.dashY = 0;
+    this.knockbackUntil = 0;
+    this.knockbackMovementLockUntil = 0;
+    this.knockbackX = 0;
+    this.knockbackY = 0;
+    this.lastDamageAt = -9999;
+    this.dying = false;
+    this.container.setPosition(x, y);
+    this.container.setActive(true).setVisible(true);
+    this.container.setAlpha(1);
+    this.container.setScale(1);
+    this.container.removeAll(true);
+    this.shape = this.scene.add.graphics();
+    this.container.add(this.shape);
+    this.active = true;
+    this.body.body.setCircle(this.radius);
+    this.body.body.setOffset(-this.radius, -this.radius);
+    this.body.body.enable = true;
+    this.applyIllusorForm("blueSquare", true);
+    this.nextIllusorTransformAt = this.scene.time.now + ILLUSOR_CONFIG.transformIntervalMs;
+    this.nextIllusorShotAt = 0;
+    this.illusorShotCycle = 0;
+    this.clearHealthBar();
+  }
+
   update(player, delta, now = 0) {
     if (!this.active) return;
+    if (this.isIllusor) {
+      this.updateIllusorTransform(now);
+      this.updateIllusorAttacks(now);
+    }
     const dx = player.body.x - this.container.x;
     const dy = player.body.y - this.container.y;
     const distance = Math.hypot(dx, dy) || 1;
@@ -156,6 +221,158 @@ class Enemy {
     this.drawHealthBar();
   }
 
+  applyIllusorForm(key, immediate = false) {
+    const baseType = ENEMY_TYPES[key] || ENEMY_TYPES.blueSquare;
+    const cfg = ILLUSOR_CONFIG.forms[key] || ILLUSOR_CONFIG.forms.blueSquare;
+    this.illusorFormKey = key;
+    this.damageTakenMultiplier = cfg.damageTakenMultiplier || 1;
+    this.speed = this.illusorBaseSpeed * (cfg.speedMultiplier || 1);
+    this.type = {
+      ...baseType,
+      radius: this.radius,
+      baseHp: this.maxHp,
+      damage: this.damage,
+      exp: this.exp,
+      dashIntervalMs: cfg.dashIntervalMs,
+      dashDurationMs: cfg.dashDurationMs,
+      dashMultiplier: cfg.dashMultiplier,
+      dashInertiaMs: cfg.dashInertiaMs,
+      dashInertiaPower: cfg.dashInertiaPower,
+    };
+    if (cfg.dashIntervalMs) {
+      this.nextDashAt = this.scene.time.now + Phaser.Math.Between(620, cfg.dashIntervalMs);
+    } else {
+      this.nextDashAt = 0;
+      this.dashUntil = 0;
+      this.dashInertiaUntil = 0;
+    }
+    if (key === "redPentagon") {
+      this.nextIllusorShotAt = this.scene.time.now + 1000;
+      this.illusorShotCycle = 0;
+    } else {
+      this.nextIllusorShotAt = 0;
+      this.illusorShotCycle = 0;
+    }
+    if (immediate) this.drawIllusorExact(baseType);
+  }
+
+  updateIllusorTransform(now) {
+    if (this.illusorTransform || now < this.nextIllusorTransformAt) return;
+    const options = ILLUSOR_FORM_KEYS.filter((key) => key !== this.illusorFormKey);
+    const nextKey = options[Phaser.Math.Between(0, options.length - 1)] || "blueSquare";
+    this.startIllusorTransform(nextKey, now);
+  }
+
+  startIllusorTransform(nextKey, now) {
+    const fromType = ENEMY_TYPES[this.illusorFormKey] || ENEMY_TYPES.blueSquare;
+    const toType = ENEMY_TYPES[nextKey] || ENEMY_TYPES.blueSquare;
+    this.illusorTransform = { fromType, toType, progress: 0 };
+    if (this.illusorTransformTween) this.illusorTransformTween.stop();
+    this.illusorTransformTween = this.scene.tweens.add({
+      targets: this.illusorTransform,
+      progress: 1,
+      duration: ILLUSOR_CONFIG.transformDurationMs,
+      ease: "Sine.easeInOut",
+      onUpdate: () => this.drawIllusorMorph(),
+      onComplete: () => {
+        this.illusorTransformTween = null;
+        this.illusorTransform = null;
+        this.applyIllusorForm(nextKey, true);
+        this.scene.onIllusorFormEntered?.(this, nextKey);
+      },
+    });
+    this.nextIllusorTransformAt = now + ILLUSOR_CONFIG.transformIntervalMs;
+  }
+
+  updateIllusorAttacks(now) {
+    if (this.illusorTransform || this.illusorFormKey !== "redPentagon" || this.nextIllusorShotAt <= 0) return;
+    if (now < this.nextIllusorShotAt) return;
+    this.scene.fireIllusorRadial?.(this, 3, this.illusorShotCycle * 0.34);
+    this.illusorShotCycle += 1;
+    this.nextIllusorShotAt = now + 1000;
+  }
+
+  colorMix(from, to, t) {
+    const inv = 1 - t;
+    const r = Math.round(((from >> 16) & 255) * inv + ((to >> 16) & 255) * t);
+    const g = Math.round(((from >> 8) & 255) * inv + ((to >> 8) & 255) * t);
+    const b = Math.round((from & 255) * inv + (to & 255) * t);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  shapeSides(shape) {
+    if (shape === "circle") return 32;
+    if (shape === "triangle") return 3;
+    if (shape === "square") return 4;
+    if (shape === "hexagon") return 6;
+    return 5;
+  }
+
+  shapeRadiusAt(shape, angle, radius) {
+    if (shape === "circle") return radius;
+    const sides = this.shapeSides(shape);
+    const sector = (Math.PI * 2) / sides;
+    const offset = this.shapeAngleOffset(shape);
+    let local = (angle - offset + sector / 2) % sector;
+    if (local < 0) local += sector;
+    local -= sector / 2;
+    return (radius * Math.cos(Math.PI / sides)) / Math.max(0.18, Math.cos(local));
+  }
+
+  shapeAngleOffset(shape) {
+    if (shape === "square") return -Math.PI / 4;
+    return -Math.PI / 2;
+  }
+
+  drawIllusorExact(type) {
+    if (!this.shape) return;
+    this.shape.clear();
+    this.shape.lineStyle(2, type.stroke, 0.74);
+    this.shape.fillStyle(type.color, 1);
+    if (type.shape === "circle") {
+      this.shape.fillCircle(0, 0, this.radius);
+      this.shape.strokeCircle(0, 0, this.radius);
+      return;
+    }
+    if (type.shape === "square") {
+      const size = this.radius * 1.72;
+      this.shape.fillRoundedRect(-size / 2, -size / 2, size, size, 5);
+      this.shape.strokeRoundedRect(-size / 2, -size / 2, size, size, 5);
+      return;
+    }
+    const sides = this.shapeSides(type.shape);
+    const points = [];
+    const offset = this.shapeAngleOffset(type.shape);
+    for (let i = 0; i < sides; i += 1) {
+      const angle = offset + (i / sides) * Math.PI * 2;
+      points.push(new Phaser.Geom.Point(Math.cos(angle) * this.radius, Math.sin(angle) * this.radius));
+    }
+    this.shape.fillPoints(points, true);
+    this.shape.strokePoints(points, true);
+  }
+
+  drawIllusorMorph() {
+    const morph = this.illusorTransform;
+    if (!morph || !this.shape) return;
+    const t = clamp(morph.progress, 0, 1);
+    const fill = this.colorMix(morph.fromType.color, morph.toType.color, t);
+    const stroke = this.colorMix(morph.fromType.stroke, morph.toType.stroke, t);
+    const points = [];
+    const samples = 36;
+    for (let i = 0; i < samples; i += 1) {
+      const angle = -Math.PI / 2 + (i / samples) * Math.PI * 2;
+      const fromRadius = this.shapeRadiusAt(morph.fromType.shape, angle, this.radius);
+      const toRadius = this.shapeRadiusAt(morph.toType.shape, angle, this.radius);
+      const radius = fromRadius * (1 - t) + toRadius * t;
+      points.push(new Phaser.Geom.Point(Math.cos(angle) * radius, Math.sin(angle) * radius));
+    }
+    this.shape.clear();
+    this.shape.lineStyle(2, stroke, 0.74);
+    this.shape.fillStyle(fill, 1);
+    this.shape.fillPoints(points, true);
+    this.shape.strokePoints(points, true);
+  }
+
   applySlow(multiplier, until) {
     this.slowMultiplier = Math.min(this.slowMultiplier, multiplier);
     this.slowUntil = Math.max(this.slowUntil, until);
@@ -193,27 +410,42 @@ class Enemy {
 
   takeDamage(amount, feedback = true) {
     if (!this.active) return false;
-    this.hp = Math.max(0, this.hp - amount);
+    this.hp = Math.max(0, this.hp - amount * (this.damageTakenMultiplier || 1));
     this.drawHealthBar();
     if (!feedback) return this.hp <= 0;
     this.scene.tweens.killTweensOf(this.container);
     this.container.setAlpha(1);
     this.container.setScale(1);
-    this.scene.tweens.add({
-      targets: this.container,
-      alpha: 0.62,
-      scaleX: 1.12,
-      scaleY: 1.12,
-      duration: 55,
-      yoyo: true,
-      ease: "Sine.easeOut",
-      onComplete: () => {
-        if (this.active && !this.dying) {
-          this.container.setAlpha(1);
-          this.container.setScale(1);
+    const tweenConfig = this.isIllusor && this.illusorTransform
+      ? {
+          targets: this.container,
+          alpha: 0.68,
+          duration: 55,
+          yoyo: true,
+          ease: "Sine.easeOut",
+          onComplete: () => {
+            if (this.active && !this.dying) {
+              this.container.setAlpha(1);
+              this.container.setScale(1);
+            }
+          },
         }
-      },
-    });
+      : {
+          targets: this.container,
+          alpha: 0.62,
+          scaleX: 1.12,
+          scaleY: 1.12,
+          duration: 55,
+          yoyo: true,
+          ease: "Sine.easeOut",
+          onComplete: () => {
+            if (this.active && !this.dying) {
+              this.container.setAlpha(1);
+              this.container.setScale(1);
+            }
+          },
+        };
+    this.scene.tweens.add(tweenConfig);
     return this.hp <= 0;
   }
 
@@ -259,6 +491,16 @@ class Enemy {
     this.knockbackMovementLockUntil = 0;
     this.knockbackX = 0;
     this.knockbackY = 0;
+    this.isIllusor = false;
+    this.illusorFormKey = "blueSquare";
+    this.illusorBaseSpeed = 0;
+    if (this.illusorTransformTween) this.illusorTransformTween.stop();
+    this.illusorTransform = null;
+    this.illusorTransformTween = null;
+    this.nextIllusorTransformAt = 0;
+    this.nextIllusorShotAt = 0;
+    this.illusorShotCycle = 0;
+    this.damageTakenMultiplier = 1;
     this.clearHealthBar();
   }
 
@@ -269,7 +511,7 @@ class Enemy {
     }
 
     const pct = clamp(this.hp / this.maxHp, 0, 1);
-    const width = clamp(this.radius * 2.2, 22, 46);
+    const width = this.isIllusor ? clamp(this.radius * 2.2, 56, 96) : clamp(this.radius * 2.2, 22, 46);
     const height = 4;
     const x = this.container.x - width / 2;
     const y = this.container.y - this.radius - 14;

@@ -78,6 +78,37 @@ const ENEMY_TYPES = {
   },
 };
 
+const ILLUSOR_FORM_KEYS = ["redCircle", "blueSquare", "yellowTriangle", "redPentagon", "cyanHexagon"];
+const ILLUSOR_CONFIG = {
+  radius: ENEMY_TYPES.blueSquare.radius * 2.625,
+  hp: 150,
+  damage: 35,
+  exp: 0,
+  transformIntervalMs: 6000,
+  transformDurationMs: 420,
+  baseSpeed: ENEMY_TYPES.blueSquare.speed * 1.3,
+  projectileDamage: 20,
+  projectileSpeed: 310,
+  projectileRadius: 5.45,
+  projectileLifeMs: 3600,
+  projectileMaxDistance: 850,
+  forms: {
+    redCircle: { damageTakenMultiplier: 1.2, speedMultiplier: 1 },
+    blueSquare: { damageTakenMultiplier: 0.8, speedMultiplier: 1 },
+    yellowTriangle: { damageTakenMultiplier: 0.9, speedMultiplier: 1.15 },
+    redPentagon: { damageTakenMultiplier: 0.75, speedMultiplier: 0.9 },
+    cyanHexagon: {
+      damageTakenMultiplier: 0.95,
+      speedMultiplier: 1.1,
+      dashIntervalMs: 1850,
+      dashDurationMs: 180,
+      dashMultiplier: 3.29,
+      dashInertiaMs: 210,
+      dashInertiaPower: 0.28,
+    },
+  },
+};
+
 const CONFIG = {
   playerSpeed: 233,
   playerAcceleration: 30,
