@@ -559,6 +559,7 @@ function showUpgradeScreen(choices) {
     button.className = `upgrade-option upgrade-option-${styleId}`;
     button.type = "button";
     button.innerHTML = `
+      <span class="upgrade-hotkey">${index + 1}</span>
       <span class="upgrade-badge">${choice.badge}</span>
       <span class="upgrade-title">${choice.title}</span>
       <span class="upgrade-description">${choice.description}</span>

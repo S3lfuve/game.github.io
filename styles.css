@@ -973,6 +973,23 @@ button {
   transform: translateY(0) scale(0.985);
 }
 
+.upgrade-hotkey {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .upgrade-option-razer {
   --upgrade-rgb: 178, 61, 62;
   --upgrade-border: rgba(229, 113, 104, 0.42);

@@ -2543,6 +2543,14 @@
     });
   }
 
+  function handleUpgradeHotkey(event) {
+    if (event.repeat || isTextInputActive() || runtime.mode !== "upgrade") return;
+    const optionIndex = ["1", "2", "3"].indexOf(event.key);
+    if (optionIndex === -1) return;
+    event.preventDefault();
+    runtime.scene?.chooseUpgrade(optionIndex);
+  }
+
   dom.playButton.addEventListener("click", beginGame);
   dom.restartButton.addEventListener("click", () => {
     submitPendingLeaderboardRun();
@@ -2575,6 +2583,7 @@
   document.addEventListener("pointerdown", (event) => {
     if (!dom.leaderboardPanel?.contains(event.target)) setLeaderboardCategoryMenuOpen(false);
   });
+  document.addEventListener("keydown", handleUpgradeHotkey);
   document.querySelectorAll(".settings-arrow").forEach((button) => {
     button.addEventListener("click", () => cycleSetting(button.dataset.setting, Number(button.dataset.dir)));
   });
