@@ -22,19 +22,13 @@ const dom = {
   settingsPanel: document.getElementById("settings-panel"),
   settingControlRow: document.getElementById("setting-control-type-row"),
   settingJoystickRow: document.getElementById("setting-joystickOpacity")?.closest(".settings-row"),
-  joystickOpacitySlider: document.getElementById("setting-joystickOpacity"),
-  joystickOpacityControl: document.getElementById("setting-joystickOpacity")?.closest(".settings-range-control"),
-  joystickOpacityValue: document.getElementById("setting-joystickOpacity-value"),
   settingLabels: {
     controlType: document.getElementById("setting-controlType"),
     hudPosition: document.getElementById("setting-hudPosition"),
-    hudMode: document.getElementById("setting-hudMode"),
+    joystickOpacity: document.getElementById("setting-joystickOpacity"),
   },
   pauseButton: document.getElementById("pause-button"),
-  musicToggle: document.getElementById("setting-music-toggle"),
-  musicToggleState: document.getElementById("setting-music-state"),
-  vibrationToggle: document.getElementById("setting-vibration-toggle"),
-  vibrationToggleState: document.getElementById("setting-vibration-state"),
+  musicButton: document.getElementById("music-button"),
   playButton: document.getElementById("play-button"),
   restartButton: document.getElementById("restart-button"),
   menuButton: document.getElementById("menu-button"),
@@ -71,8 +65,6 @@ const runtime = {
   pendingStart: false,
   settings: null,
   musicEnabled: true,
-  vibrationEnabled: true,
-  foreground: !document.hidden,
   leaderboardCategory: "score",
   leaderboardRequestId: 0,
   leaderboardRun: null,
@@ -94,9 +86,11 @@ const SETTING_OPTIONS = {
     { value: "top", label: "Сверху" },
     { value: "bottom", label: "Снизу" },
   ],
-  hudMode: [
-    { value: "full", label: "Полностью" },
-    { value: "mini", label: "Мини" },
+  joystickOpacity: [
+    { value: "0", label: "0%" },
+    { value: "25", label: "25%" },
+    { value: "50", label: "50%" },
+    { value: "75", label: "75%" },
   ],
 };
 
@@ -104,7 +98,6 @@ function defaultSettings() {
   return {
     controlType: "combined",
     hudPosition: isMobileViewport() ? "top" : "bottom",
-    hudMode: "full",
     joystickOpacity: "75",
   };
 }
@@ -124,10 +117,6 @@ function loadSettings() {
     Object.keys(SETTING_OPTIONS).forEach((key) => {
       if (isValidSetting(key, parsed[key])) settings[key] = parsed[key];
     });
-    const joystickOpacity = Number(parsed.joystickOpacity);
-    if (Number.isFinite(joystickOpacity)) {
-      settings.joystickOpacity = String(clamp(Math.round(joystickOpacity / 5) * 5, 0, 100));
-    }
   } catch (error) {
     return settings;
   }
@@ -159,35 +148,17 @@ function updateSettingsUi(skipKey = "") {
   dom.settingControlRow?.classList.toggle("hidden", isMobileViewport());
   const joystickLocked = isJoystickOpacityLocked();
   dom.settingJoystickRow?.classList.toggle("is-disabled", joystickLocked);
-  const joystickOpacity = clamp(Number(runtime.settings.joystickOpacity) || 0, 0, 100);
-  if (dom.joystickOpacitySlider) {
-    dom.joystickOpacitySlider.value = String(joystickOpacity);
-    dom.joystickOpacitySlider.disabled = joystickLocked;
-    dom.joystickOpacitySlider.setAttribute("aria-disabled", joystickLocked ? "true" : "false");
-  }
-  dom.joystickOpacityControl?.style.setProperty("--range-progress", `${joystickOpacity}%`);
-  if (dom.joystickOpacityValue) dom.joystickOpacityValue.textContent = `${joystickOpacity}%`;
+  dom.settingJoystickRow?.querySelectorAll(".settings-arrow").forEach((button) => {
+    button.disabled = joystickLocked;
+    button.setAttribute("aria-disabled", joystickLocked ? "true" : "false");
+  });
 }
 
 function syncSettingsPanelHeight() {
   if (!dom.settingsPanel || !dom.menuCard) return;
-  const landscape = window.matchMedia("(orientation: landscape) and (max-height: 600px)").matches;
-  const compact = landscape || window.matchMedia("(max-width: 1180px)").matches;
-  if (compact) {
-    // Measure natural sizes afresh so repeated toggles and rotation cannot grow the panels.
-    const panels = [dom.settingsPanel, dom.leaderboardPanel].filter(Boolean);
-    panels.forEach(panel => panel.style.removeProperty("--settings-panel-height"));
-    const limit = parseFloat(getComputedStyle(dom.settingsPanel).maxHeight) || Infinity;
-    const height = Math.min(limit, Math.max(...panels.map(panel => panel.offsetHeight)));
-    panels.forEach(panel => panel.style.setProperty("--settings-panel-height", `${height}px`));
-  }
-  if (landscape) {
-    const height = Math.max(dom.settingsPanel.getBoundingClientRect().height, dom.leaderboardPanel?.getBoundingClientRect().height || 0);
-    const top = Math.max(8, Math.min(dom.menuCard.offsetTop, window.innerHeight - height - 8));
-    dom.menu.style.setProperty("--landscape-panel-top", `${top}px`);
-  }
-  if (compact) {
-    syncMobileSettingsOffset();
+  if (window.matchMedia?.("(max-width: 1180px)")?.matches) {
+    dom.settingsPanel.style.removeProperty("--settings-panel-height");
+    dom.leaderboardPanel?.style.removeProperty("--settings-panel-height");
     syncMobileLeaderboardOffset();
     return;
   }
@@ -197,19 +168,6 @@ function syncSettingsPanelHeight() {
     dom.settingsPanel.style.setProperty("--settings-panel-height", `${height}px`);
     dom.leaderboardPanel?.style.setProperty("--settings-panel-height", `${height}px`);
   }
-}
-
-function syncMobileSettingsOffset() {
-  if (!dom.menu || !dom.menuCard || !dom.settingsPanel) return;
-  if (!isMobileViewport() && window.innerWidth > 640) {
-    dom.menu.style.removeProperty("--settings-mobile-shift");
-    return;
-  }
-  const panelRect = dom.settingsPanel.getBoundingClientRect();
-  const menuRect = dom.menuCard.getBoundingClientRect();
-  const baseTop = Number.isFinite(dom.menuCard.offsetTop) ? dom.menuCard.offsetTop : menuRect.top;
-  const requiredShift = Math.ceil(panelRect.bottom + 12 - baseTop);
-  dom.menu.style.setProperty("--settings-mobile-shift", `${Math.max(82, requiredShift)}px`);
 }
 
 function syncMobileLeaderboardOffset() {
@@ -248,34 +206,16 @@ function setNicknamePanelActive(active) {
   }
 }
 
-function syncPauseButtonPosition() {
-  window.cancelAnimationFrame(dom.pauseButton?._positionFrame);
-  if (!dom.pauseButton || !dom.shell || !dom.hud) return;
-  if (!isMobileViewport() || window.innerWidth > 640 || runtime.settings?.hudPosition !== "top") {
-    dom.shell.style.removeProperty("--pause-below-hud-top");
-    return;
-  }
-  dom.pauseButton._positionFrame = window.requestAnimationFrame(() => {
-    const shellRect = dom.shell.getBoundingClientRect();
-    const hudRect = dom.hud.getBoundingClientRect();
-    const top = Math.max(0, Math.round(hudRect.bottom - shellRect.top + 6));
-    dom.shell.style.setProperty("--pause-below-hud-top", `${top}px`);
-  });
-}
-
 function applySettings(skipLabelKey = "") {
   if (!runtime.settings) return;
   const hudTop = runtime.settings.hudPosition === "top";
   dom.shell.dataset.hudPosition = runtime.settings.hudPosition;
-  dom.shell.dataset.hudMode = runtime.settings.hudMode;
-  dom.hud.classList.toggle("hud-mini", runtime.settings.hudMode === "mini");
   dom.hud.classList.toggle("hud-top", hudTop);
   dom.hud.classList.toggle("hud-bottom", !hudTop);
   dom.levelToast.classList.toggle("toast-below-hud", hudTop);
   dom.joystick.style.setProperty("--joystick-opacity", String(Number(runtime.settings.joystickOpacity) / 100));
   updateSettingsUi(skipLabelKey);
   syncSettingsPanelHeight();
-  syncPauseButtonPosition();
   positionLevelToast();
   runtime.scene?.applyRuntimeSettings();
 }
@@ -364,13 +304,8 @@ function menuRainSpawnDelay() {
 function createMenuShapeElement() {
   const element = document.createElement("span");
   element.className = "menu-shape";
-  element.setAttribute("role", "button");
-  element.setAttribute("aria-label", "Лопнуть фигуру");
-  element.tabIndex = -1;
   element.addEventListener("animationend", () => releaseMenuShape(element));
   element.addEventListener("pointerdown", handleMenuShapePointerDown);
-  element.addEventListener("touchstart", handleMenuShapeTouchStart, { passive: false });
-  element.addEventListener("click", handleMenuShapePointerDown);
   return element;
 }
 
@@ -385,16 +320,7 @@ function isDesktopPointer() {
 }
 
 function handleMenuShapePointerDown(event) {
-  if (event.isPrimary === false) return;
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-  const element = event.currentTarget;
-  if (!menuRainState.active.has(element)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  popMenuShape(element);
-}
-
-function handleMenuShapeTouchStart(event) {
+  if (!isDesktopPointer() || event.button !== 0 || event.pointerType !== "mouse") return;
   const element = event.currentTarget;
   if (!menuRainState.active.has(element)) return;
   event.preventDefault();
@@ -410,7 +336,6 @@ function popMenuShape(element) {
   element.style.setProperty("--pop-y", `${(rect.top - root.top + rect.height / 2).toFixed(1)}px`);
   element.style.setProperty("--pop-half", `${(size / 2).toFixed(1)}px`);
   element.style.setProperty("--size", `${size.toFixed(1)}px`);
-  menuRainState.active.delete(element);
   element.className = `menu-shape menu-shape-${element.__rainData?.type || "circle"} is-popping`;
 }
 
@@ -574,7 +499,6 @@ function showLevelToast(levelsGained = 1) {
   });
   showLevelToast.timer = window.setTimeout(() => dom.levelToast.classList.remove("show"), 1160);
   showHudLevelPulse();
-  triggerHaptic("light");
 }
 
 function showDamageFeedback() {
@@ -629,7 +553,6 @@ function hideScreens() {
 }
 
 function showPauseScreen() {
-  document.getElementById("pause-time").textContent = formatTime(runtime.scene?.stats?.survivalMs || 0);
   dom.pauseScreen.classList.add("screen-active");
 }
 
@@ -679,7 +602,6 @@ function hideSettingsPanel() {
 
 function toggleSettingsPanel() {
   if (runtime.mode !== "menu") return;
-  triggerHaptic("veryLight");
   if (dom.settingsPanel.classList.contains("open")) hideSettingsPanel();
   else showSettingsPanel();
 }
@@ -793,7 +715,6 @@ function hideLeaderboardPanel() {
 
 function toggleLeaderboardPanel() {
   if (runtime.mode !== "menu") return;
-  triggerHaptic("veryLight");
   if (dom.leaderboardPanel.classList.contains("open")) hideLeaderboardPanel();
   else showLeaderboardPanel();
 }
@@ -926,5 +847,6 @@ function saveNicknameFromInput() {
 
 function setPauseButtonVisible(visible) {
   dom.pauseButton.classList.toggle("hidden", !visible);
-  if (visible) syncPauseButtonPosition();
+  dom.musicButton?.classList.toggle("hidden", !visible);
+  updateMusicButton();
 }

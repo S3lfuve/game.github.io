@@ -146,10 +146,6 @@ const CONFIG = {
   maxAidKits: 3,
   bulletSpeed: 610,
   bulletDamage: 2,
-  playerDamageMultiplier: 1.05,
-  contactDamageMultiplier: 0.915,
-  levelHealMultiplier: 1.15,
-  enemyHpGrowthMultiplier: 0.75,
   bulletRadius: 5.45,
   fireIntervalMs: 748,
   bulletLifeMs: 945,
@@ -177,8 +173,11 @@ const CONFIG = {
   bazookaDamage: 12,
   bazookaBaseRadius: 54,
   bazookaKnockbackRadiusMultiplier: 1.15,
-  masochismRadius: 62,
-  masochismTickMs: 500,
+  masochismRadius: 108,
+  masochismKnockbackRadius: 96,
+  masochismDamageRadius: 118,
+  masochismSlowMs: 2000,
+  masochismSlowMultiplier: 0.65,
   thorWarningMs: 1000,
   thorClusterRadius: 150,
   thorMinStrikeDistance: 88,
@@ -188,7 +187,9 @@ const SHOOTER_BULLET_COUNTS = [1, 2, 3, 5];
 const SHOOTER_FIRE_RATE_BONUS = [0, 0, 0.05, 0.15];
 const ARROW_PIERCE_LIMITS = [0, 2, 4, 6];
 const KNOCKBACK_RANGES = [null, { min: 5, max: 10 }, { min: 9, max: 14 }];
-const MASOCHISM_DURATION_MS = [0, 2000, 4000, 6000];
+const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
+const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
+const MASOCHISM_KNOCKBACK_RANGE = { min: 8, max: 12 };
 const BAZOOKA_ATTACK_INTERVALS = [0, 8, 5, 3];
 const BAZOOKA_KNOCKBACK_RANGES = [null, null, { min: 11, max: 18 }, { min: 14, max: 21 }];
 const BAZOOKA_LIGHT_BLEED = { durationMs: 2000, damagePerSecond: 0.3, level: 0.5 };
@@ -256,9 +257,9 @@ const SUPERPOWER_REGISTRY = [
     title: "Masochism",
     maxLevel: 3,
     descriptions: [
-      "При получении урона создаёт щит на 2 сек.: защищает от урона и отталкивает врагов.",
-      "Щит на 4 сек. Наносит касающимся врагам 20% урона пули каждые 0,5 сек.",
-      "Щит на 6 сек.: урон щита выше на 50%, скорость героя выше на 15% во время защиты.",
+      "При получении урона выпускает 8 сильных снарядов во все стороны.",
+      "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
+      "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
     ],
   },
   {

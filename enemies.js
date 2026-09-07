@@ -99,7 +99,7 @@ class Enemy {
     this.radius = type.radius;
     this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 1.0764));
     const heavyGrowth = type.key === "redPentagon" || type.key === "cyanHexagon";
-    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44) * CONFIG.enemyHpGrowthMultiplier;
+    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44);
     this.maxHp = type.key === "cyanHexagon" ? Math.round((type.baseHp + hpScale) * 10) / 10 : Math.round(type.baseHp + hpScale);
     this.hp = this.maxHp;
     const waveSpeedBonus = Math.min(43.2, wave * 2.79);
@@ -258,7 +258,7 @@ class Enemy {
     let velocityX = now < this.knockbackMovementLockUntil ? 0 : moveX * speed;
     let velocityY = now < this.knockbackMovementLockUntil ? 0 : moveY * speed;
     if (now < this.knockbackUntil) {
-      const fade = clamp((this.knockbackUntil - now) / (this.knockbackDurationMs || CONFIG.knockbackDurationMs), 0, 1);
+      const fade = clamp((this.knockbackUntil - now) / CONFIG.knockbackDurationMs, 0, 1);
       const eased = fade * fade;
       velocityX += this.knockbackX * eased;
       velocityY += this.knockbackY * eased;
@@ -552,15 +552,14 @@ class Enemy {
     this.slowUntil = Math.max(this.slowUntil, until);
   }
 
-  applyKnockback(dirX, dirY, distance, now, durationMs = CONFIG.knockbackDurationMs) {
+  applyKnockback(dirX, dirY, distance, now) {
     const length = Math.hypot(dirX, dirY) || 1;
-    const duration = durationMs || 110;
-    this.knockbackDurationMs = duration;
+    const duration = CONFIG.knockbackDurationMs || 110;
     const speed = (Math.max(0, distance) * 3 * 1000) / duration;
     this.knockbackX = (dirX / length) * speed;
     this.knockbackY = (dirY / length) * speed;
     this.knockbackUntil = Math.max(this.knockbackUntil, now + duration);
-    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + Math.max(duration, CONFIG.knockbackMovementLockMs || 150));
+    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + (CONFIG.knockbackMovementLockMs || 150));
   }
 
   applyBleed(level, damagePerSecond, until, now) {
@@ -585,7 +584,7 @@ class Enemy {
 
   takeDamage(amount, feedback = true) {
     if (!this.active) return false;
-    this.hp = Math.max(0, this.hp - amount * CONFIG.playerDamageMultiplier * (this.damageTakenMultiplier || 1));
+    this.hp = Math.max(0, this.hp - amount * (this.damageTakenMultiplier || 1));
     this.drawHealthBar();
     if (!feedback) return this.hp <= 0;
     this.scene.tweens.killTweensOf(this.container);
@@ -755,9 +754,7 @@ class WaveDirector {
   currentSpawnInterval() {
     const interval = CONFIG.firstSpawnIntervalMs - (this.wave - 1) * 82;
     const waveSpawnSpeedMultiplier = Math.pow(0.995, this.wave - 1);
-    // Ten percent more arrivals during the opening wave, without larger packs.
-    const openingMultiplier = this.wave === 1 ? 1 / 1.1 : 1;
-    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier) * openingMultiplier;
+    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier);
     return this.scene.hasActiveIllusorBoss?.() ? baseInterval * ILLUSOR_CONFIG.illusorSpawnIntervalMultiplier : baseInterval;
   }
 

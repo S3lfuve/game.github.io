@@ -42,15 +42,13 @@ function ensureMusicAudio() {
 }
 
 function updateMusicButton() {
-  if (!dom.musicToggle) return;
-  dom.musicToggle.classList.toggle("is-off", !runtime.musicEnabled);
-  dom.musicToggle.setAttribute("aria-pressed", runtime.musicEnabled ? "true" : "false");
-  dom.musicToggle.setAttribute("aria-label", runtime.musicEnabled ? "Выключить музыку" : "Включить музыку");
-  if (dom.musicToggleState) dom.musicToggleState.textContent = runtime.musicEnabled ? "Вкл." : "Выкл.";
+  if (!dom.musicButton) return;
+  dom.musicButton.classList.toggle("is-off", !runtime.musicEnabled);
+  dom.musicButton.setAttribute("aria-pressed", runtime.musicEnabled ? "true" : "false");
+  dom.musicButton.setAttribute("aria-label", runtime.musicEnabled ? "Music on" : "Music off");
 }
 
 function musicTargetVolume() {
-  if (!runtime.foreground) return 0;
   if (!musicState.runStarted || runtime.mode === "menu") return 0;
   if (!runtime.musicEnabled) return 0;
   if (runtime.mode === "paused") return MUSIC_PAUSE_VOLUME;
@@ -73,12 +71,6 @@ function cancelMusicFade() {
 
 function fadeMusicVolume(targetVolume, options = {}) {
   const audio = ensureMusicAudio();
-  if (!runtime.foreground) {
-    cancelMusicFade();
-    audio.pause();
-    audio.volume = 0;
-    return;
-  }
   const duration = options.duration ?? MUSIC_FADE_MS;
   const pauseWhenDone = options.pauseWhenDone || false;
   const resetWhenDone = options.resetWhenDone || false;
@@ -147,7 +139,7 @@ function startRunMusic() {
   const audio = ensureMusicAudio();
   cancelMusicFade();
   const startPlayback = () => {
-    if (!musicState.runStarted || !runtime.foreground || !runtime.musicEnabled) return;
+    if (!musicState.runStarted) return;
     if (!musicState.hasRunStartPosition && Number.isFinite(audio.duration) && audio.duration > 2) {
       try {
         audio.currentTime = Math.random() * Math.max(1, audio.duration - 1);
@@ -226,80 +218,4 @@ function setMusicEnabled(enabled) {
 
 function toggleMusic() {
   setMusicEnabled(!runtime.musicEnabled);
-}
-
-function setForeground(active) {
-  const next = Boolean(active) && !document.hidden;
-  if (runtime.foreground === next) return;
-  runtime.foreground = next;
-  if (!next) {
-    runtime.scene?.pauseRun();
-    cancelMusicFade();
-    if (musicState.audio) {
-      musicState.savedTime = musicState.audio.currentTime;
-      musicState.audio.pause();
-      musicState.audio.volume = 0;
-    }
-  } else {
-    syncMusicVolume();
-    syncPauseButtonPosition();
-  }
-}
-
-function bindAppLifecycle() {
-  let windowFocused = true;
-  const sync = () => setForeground(windowFocused && !document.hidden);
-  window.addEventListener("blur", () => { windowFocused = false; sync(); });
-  window.addEventListener("focus", () => { windowFocused = true; sync(); });
-  window.addEventListener("pagehide", () => setForeground(false));
-  window.addEventListener("pageshow", sync);
-  document.addEventListener("visibilitychange", sync);
-}
-
-const VIBRATION_STORAGE_KEY = "timeKillerVibrationEnabled";
-
-function loadVibrationEnabled() {
-  try {
-    const raw = window.localStorage?.getItem(VIBRATION_STORAGE_KEY);
-    if (raw === null || raw === undefined) return true;
-    return raw !== "false";
-  } catch (error) {
-    return true;
-  }
-}
-
-function saveVibrationEnabled() {
-  try {
-    window.localStorage?.setItem(VIBRATION_STORAGE_KEY, runtime.vibrationEnabled ? "true" : "false");
-  } catch (error) {}
-}
-
-function updateVibrationButton() {
-  if (!dom.vibrationToggle) return;
-  dom.vibrationToggle.classList.toggle("is-off", !runtime.vibrationEnabled);
-  dom.vibrationToggle.setAttribute("aria-pressed", runtime.vibrationEnabled ? "true" : "false");
-  dom.vibrationToggle.setAttribute("aria-label", runtime.vibrationEnabled ? "Выключить вибрацию" : "Включить вибрацию");
-  if (dom.vibrationToggleState) dom.vibrationToggleState.textContent = runtime.vibrationEnabled ? "Вкл." : "Выкл.";
-}
-
-function setVibrationEnabled(enabled) {
-  runtime.vibrationEnabled = Boolean(enabled);
-  saveVibrationEnabled();
-  updateVibrationButton();
-  if (!runtime.vibrationEnabled && typeof navigator.vibrate === "function") navigator.vibrate(0);
-}
-
-function toggleVibration() {
-  const enabled = !runtime.vibrationEnabled;
-  setVibrationEnabled(enabled);
-  if (enabled) triggerHaptic("light");
-}
-
-function vibrationFallback(duration) {
-  if (typeof navigator.vibrate === "function") navigator.vibrate(duration);
-}
-
-function triggerHaptic(strength = "light") {
-  if (!runtime.vibrationEnabled) return;
-  vibrationFallback(strength === "medium" ? 30 : strength === "veryLight" ? 8 : 15);
 }
