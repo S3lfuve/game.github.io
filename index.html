@@ -3,24 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>vibe io game lol</title>
+    <title>Infinity Arena</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
     <link rel="icon" type="image/png" href="icon.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="app-starting">
     <div id="game-shell">
-      <div id="game-container" aria-label="Polyra IO"></div>
+      <div id="game-container" aria-label="Infinity Arena"></div>
 
       <section id="main-menu" class="screen screen-active">
         <div id="menu-rain" class="menu-rain" aria-hidden="true"></div>
         <div class="glass-card menu-card welcome-card">
-          <p class="eyebrow">infinity survival arena</p>
+          <p class="eyebrow">infinity arena</p>
           <h2>game.s3lf.ru</h2>
           <p class="menu-copy">Руби геометрических врагов, прокачивайся и переживай бесконечные волны.</p>
           <button id="leaderboard-button" class="leaderboard-button" type="button" aria-label="Лидерборд">
@@ -66,6 +68,7 @@
                 <button class="settings-arrow" type="button" data-setting="controlType" data-dir="1" aria-label="Следующее значение">›</button>
               </div>
             </div>
+            <div class="settings-hud-grid">
             <div class="settings-row">
               <span class="settings-name">Положение HUD</span>
               <div class="settings-stepper">
@@ -75,12 +78,53 @@
               </div>
             </div>
             <div class="settings-row">
-              <span class="settings-name">Прозрачность джойстика</span>
+              <span class="settings-name">Режим HUD</span>
               <div class="settings-stepper">
-                <button class="settings-arrow" type="button" data-setting="joystickOpacity" data-dir="-1" aria-label="Предыдущее значение">‹</button>
-                <strong id="setting-joystickOpacity">75%</strong>
-                <button class="settings-arrow" type="button" data-setting="joystickOpacity" data-dir="1" aria-label="Следующее значение">›</button>
+                <button class="settings-arrow" type="button" data-setting="hudMode" data-dir="-1" aria-label="Предыдущий режим HUD">‹</button>
+                <strong id="setting-hudMode">Полностью</strong>
+                <button class="settings-arrow" type="button" data-setting="hudMode" data-dir="1" aria-label="Следующий режим HUD">›</button>
               </div>
+            </div>
+            </div>
+            <div class="settings-row">
+              <span class="settings-name">Прозрачность джойстика</span>
+              <div class="settings-range-row">
+                <div class="settings-range-control">
+                  <input id="setting-joystickOpacity" class="settings-range" type="range" min="0" max="100" step="1" value="75" aria-label="Прозрачность джойстика">
+                  <span class="settings-range-visual" aria-hidden="true">
+                    <span class="settings-range-fill"></span>
+                    <span class="settings-range-thumb"></span>
+                  </span>
+                </div>
+                <output id="setting-joystickOpacity-value" for="setting-joystickOpacity">75%</output>
+              </div>
+            </div>
+            <div class="settings-toggle-grid">
+              <button id="setting-music-toggle" class="settings-toggle" type="button" aria-pressed="true">
+                <span class="settings-toggle-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M9 18V5l11-2v13"></path>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <circle cx="17" cy="16" r="3"></circle>
+                  </svg>
+                </span>
+                <span class="settings-toggle-copy">
+                  <strong>Музыка</strong>
+                  <small id="setting-music-state">Вкл.</small>
+                </span>
+              </button>
+              <button id="setting-vibration-toggle" class="settings-toggle" type="button" aria-pressed="true">
+                <span class="settings-toggle-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="8" y="4" width="8" height="16" rx="2"></rect>
+                    <path d="M5.5 8v8M3 10.5v3M18.5 8v8M21 10.5v3"></path>
+                  </svg>
+                </span>
+                <span class="settings-toggle-copy">
+                  <strong>Вибрация</strong>
+                  <small id="setting-vibration-state">Вкл.</small>
+                </span>
+              </button>
             </div>
           </div>
         </aside>
@@ -135,6 +179,7 @@
         <div class="glass-card pause-card">
           <p class="eyebrow">забег приостановлен</p>
           <h2>Пауза</h2>
+          <p id="pause-time" class="pause-time" aria-label="Время забега">00:00</p>
           <div class="result-actions pause-actions">
             <button id="resume-button" class="primary-button" type="button">Продолжить</button>
             <button id="pause-menu-button" class="ghost-button" type="button">Главное меню</button>
@@ -146,13 +191,6 @@
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="6" y="4" width="4" height="16" rx="1"></rect>
           <rect x="14" y="4" width="4" height="16" rx="1"></rect>
-        </svg>
-      </button>
-      <button id="music-button" class="music-button hidden" type="button" aria-label="Music" aria-pressed="true">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 18V5l12-2v13"></path>
-          <circle cx="6" cy="18" r="3"></circle>
-          <circle cx="18" cy="16" r="3"></circle>
         </svg>
       </button>
 
@@ -193,8 +231,8 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js" data-game-script></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" data-game-script></script>
+    <script defer src="app.js" data-game-script></script>
   </body>
 </html>

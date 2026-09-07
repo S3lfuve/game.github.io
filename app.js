@@ -148,6 +148,10 @@ const CONFIG = {
   maxAidKits: 3,
   bulletSpeed: 610,
   bulletDamage: 2,
+  playerDamageMultiplier: 1.05,
+  contactDamageMultiplier: 0.915,
+  levelHealMultiplier: 1.15,
+  enemyHpGrowthMultiplier: 0.75,
   bulletRadius: 5.45,
   fireIntervalMs: 748,
   bulletLifeMs: 945,
@@ -175,11 +179,8 @@ const CONFIG = {
   bazookaDamage: 12,
   bazookaBaseRadius: 54,
   bazookaKnockbackRadiusMultiplier: 1.15,
-  masochismRadius: 108,
-  masochismKnockbackRadius: 96,
-  masochismDamageRadius: 118,
-  masochismSlowMs: 2000,
-  masochismSlowMultiplier: 0.65,
+  masochismRadius: 62,
+  masochismTickMs: 500,
   thorWarningMs: 1000,
   thorClusterRadius: 150,
   thorMinStrikeDistance: 88,
@@ -189,9 +190,7 @@ const SHOOTER_BULLET_COUNTS = [1, 2, 3, 5];
 const SHOOTER_FIRE_RATE_BONUS = [0, 0, 0.05, 0.15];
 const ARROW_PIERCE_LIMITS = [0, 2, 4, 6];
 const KNOCKBACK_RANGES = [null, { min: 5, max: 10 }, { min: 9, max: 14 }];
-const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
-const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
-const MASOCHISM_KNOCKBACK_RANGE = { min: 8, max: 12 };
+const MASOCHISM_DURATION_MS = [0, 2000, 4000, 6000];
 const BAZOOKA_ATTACK_INTERVALS = [0, 8, 5, 3];
 const BAZOOKA_KNOCKBACK_RANGES = [null, null, { min: 11, max: 18 }, { min: 14, max: 21 }];
 const BAZOOKA_LIGHT_BLEED = { durationMs: 2000, damagePerSecond: 0.3, level: 0.5 };
@@ -259,9 +258,9 @@ const SUPERPOWER_REGISTRY = [
     title: "Masochism",
     maxLevel: 3,
     descriptions: [
-      "При получении урона выпускает 8 сильных снарядов во все стороны.",
-      "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
-      "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
+      "При получении урона создаёт щит на 2 сек.: защищает от урона и отталкивает врагов.",
+      "Щит на 4 сек. Наносит касающимся врагам 20% урона пули каждые 0,5 сек.",
+      "Щит на 6 сек.: урон щита выше на 50%, скорость героя выше на 15% во время защиты.",
     ],
   },
   {
@@ -557,7 +556,7 @@ class Enemy {
     this.radius = type.radius;
     this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 1.0764));
     const heavyGrowth = type.key === "redPentagon" || type.key === "cyanHexagon";
-    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44);
+    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44) * CONFIG.enemyHpGrowthMultiplier;
     this.maxHp = type.key === "cyanHexagon" ? Math.round((type.baseHp + hpScale) * 10) / 10 : Math.round(type.baseHp + hpScale);
     this.hp = this.maxHp;
     const waveSpeedBonus = Math.min(43.2, wave * 2.79);
@@ -716,7 +715,7 @@ class Enemy {
     let velocityX = now < this.knockbackMovementLockUntil ? 0 : moveX * speed;
     let velocityY = now < this.knockbackMovementLockUntil ? 0 : moveY * speed;
     if (now < this.knockbackUntil) {
-      const fade = clamp((this.knockbackUntil - now) / CONFIG.knockbackDurationMs, 0, 1);
+      const fade = clamp((this.knockbackUntil - now) / (this.knockbackDurationMs || CONFIG.knockbackDurationMs), 0, 1);
       const eased = fade * fade;
       velocityX += this.knockbackX * eased;
       velocityY += this.knockbackY * eased;
@@ -1010,14 +1009,15 @@ class Enemy {
     this.slowUntil = Math.max(this.slowUntil, until);
   }
 
-  applyKnockback(dirX, dirY, distance, now) {
+  applyKnockback(dirX, dirY, distance, now, durationMs = CONFIG.knockbackDurationMs) {
     const length = Math.hypot(dirX, dirY) || 1;
-    const duration = CONFIG.knockbackDurationMs || 110;
+    const duration = durationMs || 110;
+    this.knockbackDurationMs = duration;
     const speed = (Math.max(0, distance) * 3 * 1000) / duration;
     this.knockbackX = (dirX / length) * speed;
     this.knockbackY = (dirY / length) * speed;
     this.knockbackUntil = Math.max(this.knockbackUntil, now + duration);
-    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + (CONFIG.knockbackMovementLockMs || 150));
+    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + Math.max(duration, CONFIG.knockbackMovementLockMs || 150));
   }
 
   applyBleed(level, damagePerSecond, until, now) {
@@ -1042,7 +1042,7 @@ class Enemy {
 
   takeDamage(amount, feedback = true) {
     if (!this.active) return false;
-    this.hp = Math.max(0, this.hp - amount * (this.damageTakenMultiplier || 1));
+    this.hp = Math.max(0, this.hp - amount * CONFIG.playerDamageMultiplier * (this.damageTakenMultiplier || 1));
     this.drawHealthBar();
     if (!feedback) return this.hp <= 0;
     this.scene.tweens.killTweensOf(this.container);
@@ -1212,7 +1212,9 @@ class WaveDirector {
   currentSpawnInterval() {
     const interval = CONFIG.firstSpawnIntervalMs - (this.wave - 1) * 82;
     const waveSpawnSpeedMultiplier = Math.pow(0.995, this.wave - 1);
-    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier);
+    // Ten percent more arrivals during the opening wave, without larger packs.
+    const openingMultiplier = this.wave === 1 ? 1 / 1.1 : 1;
+    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier) * openingMultiplier;
     return this.scene.hasActiveIllusorBoss?.() ? baseInterval * ILLUSOR_CONFIG.illusorSpawnIntervalMultiplier : baseInterval;
   }
 
@@ -1294,13 +1296,19 @@ const dom = {
   settingsPanel: document.getElementById("settings-panel"),
   settingControlRow: document.getElementById("setting-control-type-row"),
   settingJoystickRow: document.getElementById("setting-joystickOpacity")?.closest(".settings-row"),
+  joystickOpacitySlider: document.getElementById("setting-joystickOpacity"),
+  joystickOpacityControl: document.getElementById("setting-joystickOpacity")?.closest(".settings-range-control"),
+  joystickOpacityValue: document.getElementById("setting-joystickOpacity-value"),
   settingLabels: {
     controlType: document.getElementById("setting-controlType"),
     hudPosition: document.getElementById("setting-hudPosition"),
-    joystickOpacity: document.getElementById("setting-joystickOpacity"),
+    hudMode: document.getElementById("setting-hudMode"),
   },
   pauseButton: document.getElementById("pause-button"),
-  musicButton: document.getElementById("music-button"),
+  musicToggle: document.getElementById("setting-music-toggle"),
+  musicToggleState: document.getElementById("setting-music-state"),
+  vibrationToggle: document.getElementById("setting-vibration-toggle"),
+  vibrationToggleState: document.getElementById("setting-vibration-state"),
   playButton: document.getElementById("play-button"),
   restartButton: document.getElementById("restart-button"),
   menuButton: document.getElementById("menu-button"),
@@ -1337,6 +1345,8 @@ const runtime = {
   pendingStart: false,
   settings: null,
   musicEnabled: true,
+  vibrationEnabled: true,
+  foreground: !document.hidden,
   leaderboardCategory: "score",
   leaderboardRequestId: 0,
   leaderboardRun: null,
@@ -1358,11 +1368,9 @@ const SETTING_OPTIONS = {
     { value: "top", label: "Сверху" },
     { value: "bottom", label: "Снизу" },
   ],
-  joystickOpacity: [
-    { value: "0", label: "0%" },
-    { value: "25", label: "25%" },
-    { value: "50", label: "50%" },
-    { value: "75", label: "75%" },
+  hudMode: [
+    { value: "full", label: "Полностью" },
+    { value: "mini", label: "Мини" },
   ],
 };
 
@@ -1370,6 +1378,7 @@ function defaultSettings() {
   return {
     controlType: "combined",
     hudPosition: isMobileViewport() ? "top" : "bottom",
+    hudMode: "full",
     joystickOpacity: "75",
   };
 }
@@ -1389,6 +1398,10 @@ function loadSettings() {
     Object.keys(SETTING_OPTIONS).forEach((key) => {
       if (isValidSetting(key, parsed[key])) settings[key] = parsed[key];
     });
+    const joystickOpacity = Number(parsed.joystickOpacity);
+    if (Number.isFinite(joystickOpacity)) {
+      settings.joystickOpacity = String(clamp(Math.round(joystickOpacity / 5) * 5, 0, 100));
+    }
   } catch (error) {
     return settings;
   }
@@ -1420,17 +1433,35 @@ function updateSettingsUi(skipKey = "") {
   dom.settingControlRow?.classList.toggle("hidden", isMobileViewport());
   const joystickLocked = isJoystickOpacityLocked();
   dom.settingJoystickRow?.classList.toggle("is-disabled", joystickLocked);
-  dom.settingJoystickRow?.querySelectorAll(".settings-arrow").forEach((button) => {
-    button.disabled = joystickLocked;
-    button.setAttribute("aria-disabled", joystickLocked ? "true" : "false");
-  });
+  const joystickOpacity = clamp(Number(runtime.settings.joystickOpacity) || 0, 0, 100);
+  if (dom.joystickOpacitySlider) {
+    dom.joystickOpacitySlider.value = String(joystickOpacity);
+    dom.joystickOpacitySlider.disabled = joystickLocked;
+    dom.joystickOpacitySlider.setAttribute("aria-disabled", joystickLocked ? "true" : "false");
+  }
+  dom.joystickOpacityControl?.style.setProperty("--range-progress", `${joystickOpacity}%`);
+  if (dom.joystickOpacityValue) dom.joystickOpacityValue.textContent = `${joystickOpacity}%`;
 }
 
 function syncSettingsPanelHeight() {
   if (!dom.settingsPanel || !dom.menuCard) return;
-  if (window.matchMedia?.("(max-width: 1180px)")?.matches) {
-    dom.settingsPanel.style.removeProperty("--settings-panel-height");
-    dom.leaderboardPanel?.style.removeProperty("--settings-panel-height");
+  const landscape = window.matchMedia("(orientation: landscape) and (max-height: 600px)").matches;
+  const compact = landscape || window.matchMedia("(max-width: 1180px)").matches;
+  if (compact) {
+    // Measure natural sizes afresh so repeated toggles and rotation cannot grow the panels.
+    const panels = [dom.settingsPanel, dom.leaderboardPanel].filter(Boolean);
+    panels.forEach(panel => panel.style.removeProperty("--settings-panel-height"));
+    const limit = parseFloat(getComputedStyle(dom.settingsPanel).maxHeight) || Infinity;
+    const height = Math.min(limit, Math.max(...panels.map(panel => panel.offsetHeight)));
+    panels.forEach(panel => panel.style.setProperty("--settings-panel-height", `${height}px`));
+  }
+  if (landscape) {
+    const height = Math.max(dom.settingsPanel.getBoundingClientRect().height, dom.leaderboardPanel?.getBoundingClientRect().height || 0);
+    const top = Math.max(8, Math.min(dom.menuCard.offsetTop, window.innerHeight - height - 8));
+    dom.menu.style.setProperty("--landscape-panel-top", `${top}px`);
+  }
+  if (compact) {
+    syncMobileSettingsOffset();
     syncMobileLeaderboardOffset();
     return;
   }
@@ -1440,6 +1471,19 @@ function syncSettingsPanelHeight() {
     dom.settingsPanel.style.setProperty("--settings-panel-height", `${height}px`);
     dom.leaderboardPanel?.style.setProperty("--settings-panel-height", `${height}px`);
   }
+}
+
+function syncMobileSettingsOffset() {
+  if (!dom.menu || !dom.menuCard || !dom.settingsPanel) return;
+  if (!isMobileViewport() && window.innerWidth > 640) {
+    dom.menu.style.removeProperty("--settings-mobile-shift");
+    return;
+  }
+  const panelRect = dom.settingsPanel.getBoundingClientRect();
+  const menuRect = dom.menuCard.getBoundingClientRect();
+  const baseTop = Number.isFinite(dom.menuCard.offsetTop) ? dom.menuCard.offsetTop : menuRect.top;
+  const requiredShift = Math.ceil(panelRect.bottom + 12 - baseTop);
+  dom.menu.style.setProperty("--settings-mobile-shift", `${Math.max(82, requiredShift)}px`);
 }
 
 function syncMobileLeaderboardOffset() {
@@ -1478,16 +1522,34 @@ function setNicknamePanelActive(active) {
   }
 }
 
+function syncPauseButtonPosition() {
+  window.cancelAnimationFrame(dom.pauseButton?._positionFrame);
+  if (!dom.pauseButton || !dom.shell || !dom.hud) return;
+  if (!isMobileViewport() || window.innerWidth > 640 || runtime.settings?.hudPosition !== "top") {
+    dom.shell.style.removeProperty("--pause-below-hud-top");
+    return;
+  }
+  dom.pauseButton._positionFrame = window.requestAnimationFrame(() => {
+    const shellRect = dom.shell.getBoundingClientRect();
+    const hudRect = dom.hud.getBoundingClientRect();
+    const top = Math.max(0, Math.round(hudRect.bottom - shellRect.top + 6));
+    dom.shell.style.setProperty("--pause-below-hud-top", `${top}px`);
+  });
+}
+
 function applySettings(skipLabelKey = "") {
   if (!runtime.settings) return;
   const hudTop = runtime.settings.hudPosition === "top";
   dom.shell.dataset.hudPosition = runtime.settings.hudPosition;
+  dom.shell.dataset.hudMode = runtime.settings.hudMode;
+  dom.hud.classList.toggle("hud-mini", runtime.settings.hudMode === "mini");
   dom.hud.classList.toggle("hud-top", hudTop);
   dom.hud.classList.toggle("hud-bottom", !hudTop);
   dom.levelToast.classList.toggle("toast-below-hud", hudTop);
   dom.joystick.style.setProperty("--joystick-opacity", String(Number(runtime.settings.joystickOpacity) / 100));
   updateSettingsUi(skipLabelKey);
   syncSettingsPanelHeight();
+  syncPauseButtonPosition();
   positionLevelToast();
   runtime.scene?.applyRuntimeSettings();
 }
@@ -1576,8 +1638,13 @@ function menuRainSpawnDelay() {
 function createMenuShapeElement() {
   const element = document.createElement("span");
   element.className = "menu-shape";
+  element.setAttribute("role", "button");
+  element.setAttribute("aria-label", "Лопнуть фигуру");
+  element.tabIndex = -1;
   element.addEventListener("animationend", () => releaseMenuShape(element));
   element.addEventListener("pointerdown", handleMenuShapePointerDown);
+  element.addEventListener("touchstart", handleMenuShapeTouchStart, { passive: false });
+  element.addEventListener("click", handleMenuShapePointerDown);
   return element;
 }
 
@@ -1592,7 +1659,16 @@ function isDesktopPointer() {
 }
 
 function handleMenuShapePointerDown(event) {
-  if (!isDesktopPointer() || event.button !== 0 || event.pointerType !== "mouse") return;
+  if (event.isPrimary === false) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  const element = event.currentTarget;
+  if (!menuRainState.active.has(element)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  popMenuShape(element);
+}
+
+function handleMenuShapeTouchStart(event) {
   const element = event.currentTarget;
   if (!menuRainState.active.has(element)) return;
   event.preventDefault();
@@ -1608,6 +1684,7 @@ function popMenuShape(element) {
   element.style.setProperty("--pop-y", `${(rect.top - root.top + rect.height / 2).toFixed(1)}px`);
   element.style.setProperty("--pop-half", `${(size / 2).toFixed(1)}px`);
   element.style.setProperty("--size", `${size.toFixed(1)}px`);
+  menuRainState.active.delete(element);
   element.className = `menu-shape menu-shape-${element.__rainData?.type || "circle"} is-popping`;
 }
 
@@ -1771,6 +1848,7 @@ function showLevelToast(levelsGained = 1) {
   });
   showLevelToast.timer = window.setTimeout(() => dom.levelToast.classList.remove("show"), 1160);
   showHudLevelPulse();
+  triggerHaptic("light");
 }
 
 function showDamageFeedback() {
@@ -1825,6 +1903,7 @@ function hideScreens() {
 }
 
 function showPauseScreen() {
+  document.getElementById("pause-time").textContent = formatTime(runtime.scene?.stats?.survivalMs || 0);
   dom.pauseScreen.classList.add("screen-active");
 }
 
@@ -1874,6 +1953,7 @@ function hideSettingsPanel() {
 
 function toggleSettingsPanel() {
   if (runtime.mode !== "menu") return;
+  triggerHaptic("veryLight");
   if (dom.settingsPanel.classList.contains("open")) hideSettingsPanel();
   else showSettingsPanel();
 }
@@ -1987,6 +2067,7 @@ function hideLeaderboardPanel() {
 
 function toggleLeaderboardPanel() {
   if (runtime.mode !== "menu") return;
+  triggerHaptic("veryLight");
   if (dom.leaderboardPanel.classList.contains("open")) hideLeaderboardPanel();
   else showLeaderboardPanel();
 }
@@ -2119,8 +2200,7 @@ function saveNicknameFromInput() {
 
 function setPauseButtonVisible(visible) {
   dom.pauseButton.classList.toggle("hidden", !visible);
-  dom.musicButton?.classList.toggle("hidden", !visible);
-  updateMusicButton();
+  if (visible) syncPauseButtonPosition();
 }
 
 "use strict";
@@ -2167,13 +2247,15 @@ function ensureMusicAudio() {
 }
 
 function updateMusicButton() {
-  if (!dom.musicButton) return;
-  dom.musicButton.classList.toggle("is-off", !runtime.musicEnabled);
-  dom.musicButton.setAttribute("aria-pressed", runtime.musicEnabled ? "true" : "false");
-  dom.musicButton.setAttribute("aria-label", runtime.musicEnabled ? "Music on" : "Music off");
+  if (!dom.musicToggle) return;
+  dom.musicToggle.classList.toggle("is-off", !runtime.musicEnabled);
+  dom.musicToggle.setAttribute("aria-pressed", runtime.musicEnabled ? "true" : "false");
+  dom.musicToggle.setAttribute("aria-label", runtime.musicEnabled ? "Выключить музыку" : "Включить музыку");
+  if (dom.musicToggleState) dom.musicToggleState.textContent = runtime.musicEnabled ? "Вкл." : "Выкл.";
 }
 
 function musicTargetVolume() {
+  if (!runtime.foreground) return 0;
   if (!musicState.runStarted || runtime.mode === "menu") return 0;
   if (!runtime.musicEnabled) return 0;
   if (runtime.mode === "paused") return MUSIC_PAUSE_VOLUME;
@@ -2196,6 +2278,12 @@ function cancelMusicFade() {
 
 function fadeMusicVolume(targetVolume, options = {}) {
   const audio = ensureMusicAudio();
+  if (!runtime.foreground) {
+    cancelMusicFade();
+    audio.pause();
+    audio.volume = 0;
+    return;
+  }
   const duration = options.duration ?? MUSIC_FADE_MS;
   const pauseWhenDone = options.pauseWhenDone || false;
   const resetWhenDone = options.resetWhenDone || false;
@@ -2264,7 +2352,7 @@ function startRunMusic() {
   const audio = ensureMusicAudio();
   cancelMusicFade();
   const startPlayback = () => {
-    if (!musicState.runStarted) return;
+    if (!musicState.runStarted || !runtime.foreground || !runtime.musicEnabled) return;
     if (!musicState.hasRunStartPosition && Number.isFinite(audio.duration) && audio.duration > 2) {
       try {
         audio.currentTime = Math.random() * Math.max(1, audio.duration - 1);
@@ -2343,6 +2431,82 @@ function setMusicEnabled(enabled) {
 
 function toggleMusic() {
   setMusicEnabled(!runtime.musicEnabled);
+}
+
+function setForeground(active) {
+  const next = Boolean(active) && !document.hidden;
+  if (runtime.foreground === next) return;
+  runtime.foreground = next;
+  if (!next) {
+    runtime.scene?.pauseRun();
+    cancelMusicFade();
+    if (musicState.audio) {
+      musicState.savedTime = musicState.audio.currentTime;
+      musicState.audio.pause();
+      musicState.audio.volume = 0;
+    }
+  } else {
+    syncMusicVolume();
+    syncPauseButtonPosition();
+  }
+}
+
+function bindAppLifecycle() {
+  let windowFocused = true;
+  const sync = () => setForeground(windowFocused && !document.hidden);
+  window.addEventListener("blur", () => { windowFocused = false; sync(); });
+  window.addEventListener("focus", () => { windowFocused = true; sync(); });
+  window.addEventListener("pagehide", () => setForeground(false));
+  window.addEventListener("pageshow", sync);
+  document.addEventListener("visibilitychange", sync);
+}
+
+const VIBRATION_STORAGE_KEY = "timeKillerVibrationEnabled";
+
+function loadVibrationEnabled() {
+  try {
+    const raw = window.localStorage?.getItem(VIBRATION_STORAGE_KEY);
+    if (raw === null || raw === undefined) return true;
+    return raw !== "false";
+  } catch (error) {
+    return true;
+  }
+}
+
+function saveVibrationEnabled() {
+  try {
+    window.localStorage?.setItem(VIBRATION_STORAGE_KEY, runtime.vibrationEnabled ? "true" : "false");
+  } catch (error) {}
+}
+
+function updateVibrationButton() {
+  if (!dom.vibrationToggle) return;
+  dom.vibrationToggle.classList.toggle("is-off", !runtime.vibrationEnabled);
+  dom.vibrationToggle.setAttribute("aria-pressed", runtime.vibrationEnabled ? "true" : "false");
+  dom.vibrationToggle.setAttribute("aria-label", runtime.vibrationEnabled ? "Выключить вибрацию" : "Включить вибрацию");
+  if (dom.vibrationToggleState) dom.vibrationToggleState.textContent = runtime.vibrationEnabled ? "Вкл." : "Выкл.";
+}
+
+function setVibrationEnabled(enabled) {
+  runtime.vibrationEnabled = Boolean(enabled);
+  saveVibrationEnabled();
+  updateVibrationButton();
+  if (!runtime.vibrationEnabled && typeof navigator.vibrate === "function") navigator.vibrate(0);
+}
+
+function toggleVibration() {
+  const enabled = !runtime.vibrationEnabled;
+  setVibrationEnabled(enabled);
+  if (enabled) triggerHaptic("light");
+}
+
+function vibrationFallback(duration) {
+  if (typeof navigator.vibrate === "function") navigator.vibrate(duration);
+}
+
+function triggerHaptic(strength = "light") {
+  if (!runtime.vibrationEnabled) return;
+  vibrationFallback(strength === "medium" ? 30 : strength === "veryLight" ? 8 : 15);
 }
 
 "use strict";
@@ -3171,6 +3335,9 @@ const leaderboards = (() => {
 
     create() {
       runtime.scene = this;
+      this.game.events.once(Phaser.Core.Events.POST_RENDER, () => {
+        window.requestAnimationFrame(() => document.body.classList.remove("app-starting"));
+      });
       this.createTextures();
       this.cameras.main.setBackgroundColor("#141311");
       this.physics.world.setBounds(-1000000, -1000000, 2000000, 2000000);
@@ -3446,6 +3613,7 @@ const leaderboards = (() => {
     }
 
     pauseForMenu() {
+      this.clearMasochismShield();
       this.state = "menu";
       this.clearJoystick();
       this.clearEnemyProjectiles(false);
@@ -3477,10 +3645,12 @@ const leaderboards = (() => {
       if (!musicState.runStarted) startRunMusic();
       hidePauseScreen();
       hideUpgradeScreen();
+      if (!runtime.foreground) this.pauseRun();
     }
 
     pauseRun() {
-      if (this.state !== "playing") return;
+      if (this.state !== "playing" && this.state !== "upgrade") return;
+      this.resumeAfterPause = this.state;
       this.state = "paused";
       runtime.mode = "paused";
       this.clearJoystick();
@@ -3496,7 +3666,15 @@ const leaderboards = (() => {
     }
 
     resumeRun() {
-      if (this.state !== "paused") return;
+      if (this.state !== "paused" || !runtime.foreground) return;
+      if (this.resumeAfterPause === "upgrade") {
+        this.state = "upgrade";
+        runtime.mode = "upgrade";
+        hidePauseScreen();
+        showUpgradeScreen(this.currentUpgradeChoices);
+        setMusicPaused(false);
+        return;
+      }
       this.state = "playing";
       runtime.mode = "playing";
       this.player.resetVisual();
@@ -3530,6 +3708,8 @@ const leaderboards = (() => {
     }
 
     resetGame() {
+      this.clearMasochismShield();
+      this.resumeAfterPause = "playing";
       this.tweens.resumeAll();
       this.state = "playing";
       this.stats = {
@@ -3601,6 +3781,7 @@ const leaderboards = (() => {
       this.updatePlayerInvulnerability(time);
 
       this.updateEnemies(safeDelta, time);
+      this.drawMasochismShield();
       this.updateBloodyStatuses(time);
       this.updateRazer(safeDelta, time);
       this.updateThor(this.stats.survivalMs);
@@ -3682,12 +3863,13 @@ const leaderboards = (() => {
       }
 
       this.applyEnemySeparation(delta);
+      this.updateMasochismShield();
 
       for (const enemy of this.activeEnemies) {
         if (!enemy.active) continue;
         const distance = Phaser.Math.Distance.Between(this.player.body.x, this.player.body.y, enemy.container.x, enemy.container.y);
         if (distance < this.player.radius + enemy.radius && time - this.stats.lastContactAt >= CONFIG.contactCooldownMs) {
-          if (this.damagePlayer(enemy.damage)) {
+          if (this.damagePlayer(enemy.damage * CONFIG.contactDamageMultiplier)) {
             this.stats.lastContactAt = time;
             enemy.lastDamageAt = time;
           }
@@ -3972,7 +4154,8 @@ const leaderboards = (() => {
 
     currentPlayerSpeed() {
       const energyLevel = this.getSuperpowerLevel("energyDrink");
-      return CONFIG.playerSpeed * (1 + (ENERGY_DRINK_SPEED_BONUS[energyLevel] || 0)) * this.currentIllusorPlayerSlowMultiplier();
+      const shieldSpeed = this.isMasochismShieldActive() && this.getSuperpowerLevel("masochism") >= 3 ? 1.15 : 1;
+      return CONFIG.playerSpeed * (1 + (ENERGY_DRINK_SPEED_BONUS[energyLevel] || 0)) * this.currentIllusorPlayerSlowMultiplier() * shieldSpeed;
     }
 
     updateBossDistanceVignette(currentSpeed = this.currentPlayerSpeed()) {
@@ -4062,85 +4245,81 @@ const leaderboards = (() => {
 
     triggerMasochism() {
       const level = this.getSuperpowerLevel("masochism");
-      if (level <= 0) return;
-
-      const count = MASOCHISM_BULLET_COUNTS[level] || 0;
-      const bulletDamage = MASOCHISM_BULLET_DAMAGE[level] || CONFIG.bulletDamage;
-      const originX = this.player.body.x;
-      const originY = this.player.body.y;
-      const now = this.time.now;
-
-      for (let i = 0; i < count; i += 1) {
-        const bullet = this.getFreeBullet();
-        if (!bullet) break;
-        const angle = (i / count) * Math.PI * 2;
-        bullet.fire(originX, originY, Math.cos(angle), Math.sin(angle), now, {
-          kind: "bullet",
-          textureKey: "bulletTexture",
-          trailColor: 0x5b9dff,
-          damage: bulletDamage,
-          speed: CONFIG.bulletSpeed,
-          pierceLimit: 1,
-        });
-        this.activeBullets.push(bullet);
-      }
-
-      if (level >= 2) {
-        this.slowNearbyEnemies(originX, originY, CONFIG.masochismRadius, now);
-        this.applyRadialKnockback(originX, originY, CONFIG.masochismKnockbackRadius, MASOCHISM_KNOCKBACK_RANGE);
-      }
-
-      if (level >= 3) {
-        this.damageNearbyEnemies(originX, originY, CONFIG.masochismDamageRadius, 2);
-      }
-
-      this.makeMasochismFeedback(originX, originY, CONFIG.masochismRadius, level);
+      if (level <= 0 || this.stats.hp <= 0) return;
+      this.masochismStartedAt = this.stats.survivalMs;
+      this.masochismUntil = this.stats.survivalMs + MASOCHISM_DURATION_MS[level];
+      this.masochismHits = new WeakMap();
+      this.masochismPushes = new WeakMap();
+      if (!this.masochismShield) this.masochismShield = this.add.graphics().setDepth(6);
+      this.updateMasochismShield();
+      this.drawMasochismShield();
     }
 
-    slowNearbyEnemies(x, y, radius, now) {
+    isMasochismShieldActive() {
+      return (this.masochismUntil || 0) > (this.stats?.survivalMs || 0);
+    }
+
+    clearMasochismShield() {
+      this.masochismUntil = 0;
+      this.masochismHits = new WeakMap();
+      this.masochismShield?.destroy();
+      this.masochismShield = null;
+    }
+
+    masochismShieldRadius() {
+      return CONFIG.masochismRadius * ([0, 0.8, 1, 1.2][this.getSuperpowerLevel("masochism")] || 1);
+    }
+
+    updateMasochismShield() {
+      if (!this.isMasochismShieldActive()) return;
+      const level = this.getSuperpowerLevel("masochism");
+      const now = this.stats.survivalMs;
+      const x = this.player.body.x;
+      const y = this.player.body.y;
       for (const enemy of this.activeEnemies) {
-        if (!enemy.active) continue;
-        const distance = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
-        if (distance <= radius + enemy.radius) {
-          enemy.applySlow(CONFIG.masochismSlowMultiplier, now + CONFIG.masochismSlowMs);
+        if (!enemy.active || enemy.dying) continue;
+        let dx = enemy.container.x - x;
+        let dy = enemy.container.y - y;
+        const distance = Math.hypot(dx, dy);
+        const boundary = this.masochismShieldRadius() + enemy.radius;
+        if (distance > boundary) continue;
+        if (distance > 0.001) { dx /= distance; dy /= distance; }
+        else { dx = 1; dy = 0; }
+        enemy.dashUntil = 0;
+        enemy.dashInertiaUntil = 0;
+        // One decaying impulse carries the enemy beyond the edge, including on activation.
+        // Protection is handled by damagePlayer, so penetration never needs a position snap.
+        const pushedAt = this.masochismPushes.get(enemy) ?? -Infinity;
+        if (now - pushedAt >= 320) {
+          this.masochismPushes.set(enemy, now);
+          enemy.applyKnockback(dx, dy, Math.max(0, boundary - distance) + 28, this.time.now, 320);
+          enemy.body.body.setVelocity(enemy.knockbackX, enemy.knockbackY);
+        }
+        const lastHit = this.masochismHits.get(enemy) ?? -Infinity;
+        if (level >= 2 && now - lastHit >= CONFIG.masochismTickMs) {
+          this.masochismHits.set(enemy, now);
+          const damage = CONFIG.bulletDamage * (level >= 3 ? 0.3 : 0.2);
+          if (enemy.takeDamage(damage)) this.killEnemy(enemy);
         }
       }
     }
 
-    damageNearbyEnemies(x, y, radius, damage) {
-      for (const enemy of [...this.activeEnemies]) {
-        if (!enemy.active) continue;
-        const distance = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
-        if (distance <= radius + enemy.radius && enemy.takeDamage(damage)) {
-          this.killEnemy(enemy);
-        }
-      }
-    }
-
-    makeMasochismFeedback(x, y, radius, level) {
-      const effect = this.add.graphics({ x, y });
-      effect.setDepth(6);
-      effect.lineStyle(2, level >= 3 ? 0xca6978 : 0xb45a66, level >= 3 ? 0.28 : 0.2);
-      effect.strokeCircle(0, 0, radius);
-      effect.lineStyle(level >= 2 ? 2 : 1, 0xffffff, level >= 2 ? 0.22 : 0.1);
-      effect.strokeCircle(0, 0, level >= 2 ? CONFIG.masochismKnockbackRadius : radius * 0.58);
-      if (level >= 2) {
-        effect.fillStyle(0xffffff, 0.035);
-        effect.fillCircle(0, 0, CONFIG.masochismKnockbackRadius * 0.72);
-      }
-      this.deathEffects.push(effect);
-      this.tweens.add({
-        targets: effect,
-        alpha: 0,
-        scaleX: 1.15,
-        scaleY: 1.15,
-        duration: 260,
-        ease: "Sine.easeOut",
-        onComplete: () => {
-          this.deathEffects = this.deathEffects.filter((item) => item !== effect);
-          effect.destroy();
-        },
-      });
+    drawMasochismShield() {
+      const shield = this.masochismShield;
+      if (!shield) return;
+      shield.clear();
+      if (!this.isMasochismShieldActive()) return;
+      const now = this.stats.survivalMs;
+      const fade = Math.min(1, (now - this.masochismStartedAt) / 100, (this.masochismUntil - now) / 220);
+      const pulse = 0.65 + Math.sin(now / 160) * 0.12;
+      const radius = this.masochismShieldRadius();
+      shield.setPosition(this.player.body.x, this.player.body.y);
+      shield.fillStyle(0x5b9dff, 0.055 * fade);
+      shield.fillCircle(0, 0, radius);
+      shield.lineStyle(2, 0x8cbaff, pulse * fade);
+      shield.strokeCircle(0, 0, radius);
+      shield.lineStyle(1, 0xeee9df, 0.2 * fade);
+      shield.strokeCircle(0, 0, radius - 5);
     }
 
     directionToEnemy(enemy) {
@@ -4842,7 +5021,7 @@ const leaderboards = (() => {
       while (this.stats.exp >= this.stats.nextExp) {
         this.stats.exp = roundExpValue(this.stats.exp - this.stats.nextExp);
         this.stats.level += 1;
-        this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + 3 + (this.stats.aidKits || 0) * 2);
+        this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + (3 + (this.stats.aidKits || 0) * 2) * CONFIG.levelHealMultiplier);
         if (this.stats.level % 3 === 0) {
           this.upgradeQueue.push(this.stats.level);
         }
@@ -4869,14 +5048,7 @@ const leaderboards = (() => {
         .map((ability) => {
           const currentLevel = this.getSuperpowerLevel(ability.id);
           const nextLevel = currentLevel + 1;
-          const masochismDescriptions = [
-            "При получении урона выпускает 8 сильных снарядов во все стороны.",
-            "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
-            "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
-          ];
-          const description = ability.id === "masochism"
-            ? masochismDescriptions[Math.max(0, nextLevel - 1)]
-            : ability.descriptions[Math.max(0, nextLevel - 1)];
+          const description = ability.descriptions[Math.max(0, nextLevel - 1)];
           const attackRateNote = ability.id === "shooter" && nextLevel >= 2 ? " Увеличивает частоту атаки." : "";
           return {
             type: "ability",
@@ -4934,6 +5106,7 @@ const leaderboards = (() => {
       if (this.state !== "upgrade") return;
       const choice = this.currentUpgradeChoices[index];
       if (!choice) return;
+      triggerHaptic("light");
       this.applyUpgrade(choice);
       this.upgradeQueue.shift();
       this.currentUpgradeChoices = [];
@@ -5007,7 +5180,8 @@ const leaderboards = (() => {
     }
 
     damagePlayer(amount) {
-      if (this.isPlayerInvulnerable()) return false;
+      if (this.state !== "playing" || this.isMasochismShieldActive() || this.isPlayerInvulnerable()) return false;
+      triggerHaptic("medium");
       this.stats.hp = Math.max(0, this.stats.hp - amount);
       this.player.pulseDamage();
       this.cameras.main.shake(120, 0.00135, false);
@@ -5071,6 +5245,7 @@ const leaderboards = (() => {
 
     endGame() {
       if (this.state !== "playing") return;
+      this.clearMasochismShield();
       this.state = "gameOver";
       runtime.mode = "gameOver";
       this.clearJoystick();
@@ -5296,6 +5471,7 @@ const leaderboards = (() => {
           paused: musicState.audio ? musicState.audio.paused : true,
           volume: musicState.audio ? Number(musicState.audio.volume.toFixed(3)) : 0,
         },
+        vibrationEnabled: runtime.vibrationEnabled,
         settings: { ...runtime.settings, effectiveControlType: effectiveControlType() },
         upgradeQueue: [...this.upgradeQueue],
         upgradeChoices: this.currentUpgradeChoices.map((choice) => ({
@@ -5431,8 +5607,38 @@ const leaderboards = (() => {
   document.querySelectorAll(".settings-arrow").forEach((button) => {
     button.addEventListener("click", () => cycleSetting(button.dataset.setting, Number(button.dataset.dir)));
   });
+  dom.joystickOpacitySlider?.addEventListener("keydown", (event) => {
+    if (!runtime.settings || isJoystickOpacityLocked()) return;
+    const direction = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
+    if (!direction && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    const currentValue = clamp(Number(runtime.settings.joystickOpacity) || 0, 0, 100);
+    const value = event.key === "Home" ? 0 : event.key === "End" ? 100 : clamp(currentValue + direction * 5, 0, 100);
+    runtime.settings.joystickOpacity = String(value);
+    dom.joystickOpacitySlider.value = String(value);
+    saveSettings();
+    applySettings();
+  });
+  dom.joystickOpacitySlider?.addEventListener("input", () => {
+    if (!runtime.settings || isJoystickOpacityLocked()) return;
+    const rawValue = clamp(Number(dom.joystickOpacitySlider.value) || 0, 0, 100);
+    const snappedValue = clamp(Math.round(rawValue / 5) * 5, 0, 100);
+    runtime.settings.joystickOpacity = String(snappedValue);
+    dom.joystickOpacityControl?.style.setProperty("--range-progress", `${rawValue}%`);
+    if (dom.joystickOpacityValue) dom.joystickOpacityValue.textContent = `${snappedValue}%`;
+    dom.joystick.style.setProperty("--joystick-opacity", String(snappedValue / 100));
+  });
+  dom.joystickOpacitySlider?.addEventListener("change", () => {
+    if (!runtime.settings || isJoystickOpacityLocked()) return;
+    const value = clamp(Math.round((Number(dom.joystickOpacitySlider.value) || 0) / 5) * 5, 0, 100);
+    runtime.settings.joystickOpacity = String(value);
+    dom.joystickOpacitySlider.value = String(value);
+    saveSettings();
+    applySettings();
+  });
   dom.pauseButton.addEventListener("click", () => runtime.scene?.togglePause());
-  dom.musicButton?.addEventListener("click", toggleMusic);
+  dom.musicToggle?.addEventListener("click", toggleMusic);
+  dom.vibrationToggle?.addEventListener("click", toggleVibration);
   dom.resumeButton.addEventListener("click", () => runtime.scene?.resumeRun());
   dom.pauseMenuButton.addEventListener("click", returnToMenu);
   function forceResizeGame(force = false) {
@@ -5459,7 +5665,10 @@ const leaderboards = (() => {
   };
   runtime.settings = loadSettings();
   runtime.musicEnabled = loadMusicEnabled();
+  runtime.vibrationEnabled = loadVibrationEnabled();
+  bindAppLifecycle();
   updateMusicButton();
+  updateVibrationButton();
   applySettings();
   setNicknamePanelActive(false);
   if (document.fonts?.ready) {
