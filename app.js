@@ -148,6 +148,10 @@ const CONFIG = {
   maxAidKits: 3,
   bulletSpeed: 610,
   bulletDamage: 2,
+  playerDamageMultiplier: 1.05,
+  contactDamageMultiplier: 0.915,
+  levelHealMultiplier: 1.15,
+  enemyHpGrowthMultiplier: 0.75,
   bulletRadius: 5.45,
   fireIntervalMs: 748,
   bulletLifeMs: 945,
@@ -175,11 +179,8 @@ const CONFIG = {
   bazookaDamage: 12,
   bazookaBaseRadius: 54,
   bazookaKnockbackRadiusMultiplier: 1.15,
-  masochismRadius: 108,
-  masochismKnockbackRadius: 96,
-  masochismDamageRadius: 118,
-  masochismSlowMs: 2000,
-  masochismSlowMultiplier: 0.65,
+  masochismRadius: 62,
+  masochismTickMs: 500,
   thorWarningMs: 1000,
   thorClusterRadius: 150,
   thorMinStrikeDistance: 88,
@@ -189,9 +190,7 @@ const SHOOTER_BULLET_COUNTS = [1, 2, 3, 5];
 const SHOOTER_FIRE_RATE_BONUS = [0, 0, 0.05, 0.15];
 const ARROW_PIERCE_LIMITS = [0, 2, 4, 6];
 const KNOCKBACK_RANGES = [null, { min: 5, max: 10 }, { min: 9, max: 14 }];
-const MASOCHISM_BULLET_COUNTS = [0, 8, 10, 12];
-const MASOCHISM_BULLET_DAMAGE = [0, 4, 4, 5];
-const MASOCHISM_KNOCKBACK_RANGE = { min: 8, max: 12 };
+const MASOCHISM_DURATION_MS = [0, 2000, 4000, 6000];
 const BAZOOKA_ATTACK_INTERVALS = [0, 8, 5, 3];
 const BAZOOKA_KNOCKBACK_RANGES = [null, null, { min: 11, max: 18 }, { min: 14, max: 21 }];
 const BAZOOKA_LIGHT_BLEED = { durationMs: 2000, damagePerSecond: 0.3, level: 0.5 };
@@ -259,9 +258,9 @@ const SUPERPOWER_REGISTRY = [
     title: "Masochism",
     maxLevel: 3,
     descriptions: [
-      "При получении урона выпускает 8 сильных снарядов во все стороны.",
-      "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
-      "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
+      "При получении урона создаёт щит на 2 сек.: защищает от урона и отталкивает врагов.",
+      "Щит на 4 сек. Наносит касающимся врагам 20% урона пули каждые 0,5 сек.",
+      "Щит на 6 сек.: урон щита выше на 50%, скорость героя выше на 15% во время защиты.",
     ],
   },
   {
@@ -557,7 +556,7 @@ class Enemy {
     this.radius = type.radius;
     this.separationRadius = Math.min(type.radius, Math.max(10, type.radius * 1.0764));
     const heavyGrowth = type.key === "redPentagon" || type.key === "cyanHexagon";
-    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44);
+    const hpScale = type.key === "redCircle" ? 0 : Math.max(0, wave - type.minWave) * (heavyGrowth ? 1.12 : 0.44) * CONFIG.enemyHpGrowthMultiplier;
     this.maxHp = type.key === "cyanHexagon" ? Math.round((type.baseHp + hpScale) * 10) / 10 : Math.round(type.baseHp + hpScale);
     this.hp = this.maxHp;
     const waveSpeedBonus = Math.min(43.2, wave * 2.79);
@@ -716,7 +715,7 @@ class Enemy {
     let velocityX = now < this.knockbackMovementLockUntil ? 0 : moveX * speed;
     let velocityY = now < this.knockbackMovementLockUntil ? 0 : moveY * speed;
     if (now < this.knockbackUntil) {
-      const fade = clamp((this.knockbackUntil - now) / CONFIG.knockbackDurationMs, 0, 1);
+      const fade = clamp((this.knockbackUntil - now) / (this.knockbackDurationMs || CONFIG.knockbackDurationMs), 0, 1);
       const eased = fade * fade;
       velocityX += this.knockbackX * eased;
       velocityY += this.knockbackY * eased;
@@ -1010,14 +1009,15 @@ class Enemy {
     this.slowUntil = Math.max(this.slowUntil, until);
   }
 
-  applyKnockback(dirX, dirY, distance, now) {
+  applyKnockback(dirX, dirY, distance, now, durationMs = CONFIG.knockbackDurationMs) {
     const length = Math.hypot(dirX, dirY) || 1;
-    const duration = CONFIG.knockbackDurationMs || 110;
+    const duration = durationMs || 110;
+    this.knockbackDurationMs = duration;
     const speed = (Math.max(0, distance) * 3 * 1000) / duration;
     this.knockbackX = (dirX / length) * speed;
     this.knockbackY = (dirY / length) * speed;
     this.knockbackUntil = Math.max(this.knockbackUntil, now + duration);
-    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + (CONFIG.knockbackMovementLockMs || 150));
+    this.knockbackMovementLockUntil = Math.max(this.knockbackMovementLockUntil, now + Math.max(duration, CONFIG.knockbackMovementLockMs || 150));
   }
 
   applyBleed(level, damagePerSecond, until, now) {
@@ -1042,7 +1042,7 @@ class Enemy {
 
   takeDamage(amount, feedback = true) {
     if (!this.active) return false;
-    this.hp = Math.max(0, this.hp - amount * (this.damageTakenMultiplier || 1));
+    this.hp = Math.max(0, this.hp - amount * CONFIG.playerDamageMultiplier * (this.damageTakenMultiplier || 1));
     this.drawHealthBar();
     if (!feedback) return this.hp <= 0;
     this.scene.tweens.killTweensOf(this.container);
@@ -1212,7 +1212,8 @@ class WaveDirector {
   currentSpawnInterval() {
     const interval = CONFIG.firstSpawnIntervalMs - (this.wave - 1) * 82;
     const waveSpawnSpeedMultiplier = Math.pow(0.995, this.wave - 1);
-    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier);
+    const openingMultiplier = this.wave === 1 ? 1 / 1.1 : 1;
+    const baseInterval = Math.max(CONFIG.minSpawnIntervalMs, interval * waveSpawnSpeedMultiplier) * openingMultiplier;
     return this.scene.hasActiveIllusorBoss?.() ? baseInterval * ILLUSOR_CONFIG.illusorSpawnIntervalMultiplier : baseInterval;
   }
 
@@ -3446,6 +3447,7 @@ const leaderboards = (() => {
     }
 
     pauseForMenu() {
+      this.clearMasochismShield();
       this.state = "menu";
       this.clearJoystick();
       this.clearEnemyProjectiles(false);
@@ -3530,6 +3532,7 @@ const leaderboards = (() => {
     }
 
     resetGame() {
+      this.clearMasochismShield();
       this.tweens.resumeAll();
       this.state = "playing";
       this.stats = {
@@ -3601,6 +3604,7 @@ const leaderboards = (() => {
       this.updatePlayerInvulnerability(time);
 
       this.updateEnemies(safeDelta, time);
+      this.drawMasochismShield();
       this.updateBloodyStatuses(time);
       this.updateRazer(safeDelta, time);
       this.updateThor(this.stats.survivalMs);
@@ -3682,12 +3686,13 @@ const leaderboards = (() => {
       }
 
       this.applyEnemySeparation(delta);
+      this.updateMasochismShield();
 
       for (const enemy of this.activeEnemies) {
         if (!enemy.active) continue;
         const distance = Phaser.Math.Distance.Between(this.player.body.x, this.player.body.y, enemy.container.x, enemy.container.y);
         if (distance < this.player.radius + enemy.radius && time - this.stats.lastContactAt >= CONFIG.contactCooldownMs) {
-          if (this.damagePlayer(enemy.damage)) {
+          if (this.damagePlayer(enemy.damage * CONFIG.contactDamageMultiplier)) {
             this.stats.lastContactAt = time;
             enemy.lastDamageAt = time;
           }
@@ -3972,7 +3977,8 @@ const leaderboards = (() => {
 
     currentPlayerSpeed() {
       const energyLevel = this.getSuperpowerLevel("energyDrink");
-      return CONFIG.playerSpeed * (1 + (ENERGY_DRINK_SPEED_BONUS[energyLevel] || 0)) * this.currentIllusorPlayerSlowMultiplier();
+      const shieldSpeed = this.isMasochismShieldActive() && this.getSuperpowerLevel("masochism") >= 3 ? 1.15 : 1;
+      return CONFIG.playerSpeed * (1 + (ENERGY_DRINK_SPEED_BONUS[energyLevel] || 0)) * this.currentIllusorPlayerSlowMultiplier() * shieldSpeed;
     }
 
     updateBossDistanceVignette(currentSpeed = this.currentPlayerSpeed()) {
@@ -4062,85 +4068,80 @@ const leaderboards = (() => {
 
     triggerMasochism() {
       const level = this.getSuperpowerLevel("masochism");
-      if (level <= 0) return;
-
-      const count = MASOCHISM_BULLET_COUNTS[level] || 0;
-      const bulletDamage = MASOCHISM_BULLET_DAMAGE[level] || CONFIG.bulletDamage;
-      const originX = this.player.body.x;
-      const originY = this.player.body.y;
-      const now = this.time.now;
-
-      for (let i = 0; i < count; i += 1) {
-        const bullet = this.getFreeBullet();
-        if (!bullet) break;
-        const angle = (i / count) * Math.PI * 2;
-        bullet.fire(originX, originY, Math.cos(angle), Math.sin(angle), now, {
-          kind: "bullet",
-          textureKey: "bulletTexture",
-          trailColor: 0x5b9dff,
-          damage: bulletDamage,
-          speed: CONFIG.bulletSpeed,
-          pierceLimit: 1,
-        });
-        this.activeBullets.push(bullet);
-      }
-
-      if (level >= 2) {
-        this.slowNearbyEnemies(originX, originY, CONFIG.masochismRadius, now);
-        this.applyRadialKnockback(originX, originY, CONFIG.masochismKnockbackRadius, MASOCHISM_KNOCKBACK_RANGE);
-      }
-
-      if (level >= 3) {
-        this.damageNearbyEnemies(originX, originY, CONFIG.masochismDamageRadius, 2);
-      }
-
-      this.makeMasochismFeedback(originX, originY, CONFIG.masochismRadius, level);
+      if (level <= 0 || this.stats.hp <= 0) return;
+      this.masochismStartedAt = this.stats.survivalMs;
+      this.masochismUntil = this.stats.survivalMs + MASOCHISM_DURATION_MS[level];
+      this.masochismHits = new WeakMap();
+      this.masochismPushes = new WeakMap();
+      if (!this.masochismShield) this.masochismShield = this.add.graphics().setDepth(6);
+      this.updateMasochismShield();
+      this.drawMasochismShield();
     }
 
-    slowNearbyEnemies(x, y, radius, now) {
+    isMasochismShieldActive() {
+      return (this.masochismUntil || 0) > (this.stats?.survivalMs || 0);
+    }
+
+    clearMasochismShield() {
+      this.masochismUntil = 0;
+      this.masochismHits = new WeakMap();
+      this.masochismPushes = new WeakMap();
+      this.masochismShield?.destroy();
+      this.masochismShield = null;
+    }
+
+    masochismShieldRadius() {
+      return CONFIG.masochismRadius * ([0, 0.8, 1, 1.2][this.getSuperpowerLevel("masochism")] || 1);
+    }
+
+    updateMasochismShield() {
+      if (!this.isMasochismShieldActive()) return;
+      const level = this.getSuperpowerLevel("masochism");
+      const now = this.stats.survivalMs;
+      const x = this.player.body.x;
+      const y = this.player.body.y;
       for (const enemy of this.activeEnemies) {
-        if (!enemy.active) continue;
-        const distance = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
-        if (distance <= radius + enemy.radius) {
-          enemy.applySlow(CONFIG.masochismSlowMultiplier, now + CONFIG.masochismSlowMs);
+        if (!enemy.active || enemy.dying) continue;
+        let dx = enemy.container.x - x;
+        let dy = enemy.container.y - y;
+        const distance = Math.hypot(dx, dy);
+        const boundary = this.masochismShieldRadius() + enemy.radius;
+        if (distance > boundary) continue;
+        if (distance > 0.001) { dx /= distance; dy /= distance; }
+        else { dx = 1; dy = 0; }
+        enemy.dashUntil = 0;
+        enemy.dashInertiaUntil = 0;
+        const pushedAt = this.masochismPushes.get(enemy) ?? -Infinity;
+        if (now - pushedAt >= 320) {
+          this.masochismPushes.set(enemy, now);
+          enemy.applyKnockback(dx, dy, Math.max(0, boundary - distance) + 28, this.time.now, 320);
+          enemy.body.body.setVelocity(enemy.knockbackX, enemy.knockbackY);
+        }
+        const lastHit = this.masochismHits.get(enemy) ?? -Infinity;
+        if (level >= 2 && now - lastHit >= CONFIG.masochismTickMs) {
+          this.masochismHits.set(enemy, now);
+          const damage = CONFIG.bulletDamage * (level >= 3 ? 0.3 : 0.2);
+          if (enemy.takeDamage(damage)) this.killEnemy(enemy);
         }
       }
     }
 
-    damageNearbyEnemies(x, y, radius, damage) {
-      for (const enemy of [...this.activeEnemies]) {
-        if (!enemy.active) continue;
-        const distance = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
-        if (distance <= radius + enemy.radius && enemy.takeDamage(damage)) {
-          this.killEnemy(enemy);
-        }
-      }
-    }
-
-    makeMasochismFeedback(x, y, radius, level) {
-      const effect = this.add.graphics({ x, y });
-      effect.setDepth(6);
-      effect.lineStyle(2, level >= 3 ? 0xca6978 : 0xb45a66, level >= 3 ? 0.28 : 0.2);
-      effect.strokeCircle(0, 0, radius);
-      effect.lineStyle(level >= 2 ? 2 : 1, 0xffffff, level >= 2 ? 0.22 : 0.1);
-      effect.strokeCircle(0, 0, level >= 2 ? CONFIG.masochismKnockbackRadius : radius * 0.58);
-      if (level >= 2) {
-        effect.fillStyle(0xffffff, 0.035);
-        effect.fillCircle(0, 0, CONFIG.masochismKnockbackRadius * 0.72);
-      }
-      this.deathEffects.push(effect);
-      this.tweens.add({
-        targets: effect,
-        alpha: 0,
-        scaleX: 1.15,
-        scaleY: 1.15,
-        duration: 260,
-        ease: "Sine.easeOut",
-        onComplete: () => {
-          this.deathEffects = this.deathEffects.filter((item) => item !== effect);
-          effect.destroy();
-        },
-      });
+    drawMasochismShield() {
+      const shield = this.masochismShield;
+      if (!shield) return;
+      shield.clear();
+      if (!this.isMasochismShieldActive()) return;
+      const now = this.stats.survivalMs;
+      const fade = Math.min(1, (now - this.masochismStartedAt) / 100, (this.masochismUntil - now) / 220);
+      const pulse = 0.65 + Math.sin(now / 160) * 0.12;
+      const radius = this.masochismShieldRadius();
+      shield.setPosition(this.player.body.x, this.player.body.y);
+      shield.fillStyle(0x5b9dff, 0.055 * fade);
+      shield.fillCircle(0, 0, radius);
+      shield.lineStyle(2, 0x8cbaff, pulse * fade);
+      shield.strokeCircle(0, 0, radius);
+      shield.lineStyle(1, 0xeee9df, 0.2 * fade);
+      shield.strokeCircle(0, 0, radius - 5);
     }
 
     directionToEnemy(enemy) {
@@ -4842,7 +4843,7 @@ const leaderboards = (() => {
       while (this.stats.exp >= this.stats.nextExp) {
         this.stats.exp = roundExpValue(this.stats.exp - this.stats.nextExp);
         this.stats.level += 1;
-        this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + 3 + (this.stats.aidKits || 0) * 2);
+        this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + (3 + (this.stats.aidKits || 0) * 2) * CONFIG.levelHealMultiplier);
         if (this.stats.level % 3 === 0) {
           this.upgradeQueue.push(this.stats.level);
         }
@@ -4869,14 +4870,7 @@ const leaderboards = (() => {
         .map((ability) => {
           const currentLevel = this.getSuperpowerLevel(ability.id);
           const nextLevel = currentLevel + 1;
-          const masochismDescriptions = [
-            "При получении урона выпускает 8 сильных снарядов во все стороны.",
-            "Выпускает 10 сильных снарядов, замедляет и также немного отталкивает врагов.",
-            "Выпускает 12 сильных снарядов, враги в небольшом радиусе от героя получат урон.",
-          ];
-          const description = ability.id === "masochism"
-            ? masochismDescriptions[Math.max(0, nextLevel - 1)]
-            : ability.descriptions[Math.max(0, nextLevel - 1)];
+          const description = ability.descriptions[Math.max(0, nextLevel - 1)];
           const attackRateNote = ability.id === "shooter" && nextLevel >= 2 ? " Увеличивает частоту атаки." : "";
           return {
             type: "ability",
@@ -5007,7 +5001,7 @@ const leaderboards = (() => {
     }
 
     damagePlayer(amount) {
-      if (this.isPlayerInvulnerable()) return false;
+      if (this.isMasochismShieldActive() || this.isPlayerInvulnerable()) return false;
       this.stats.hp = Math.max(0, this.stats.hp - amount);
       this.player.pulseDamage();
       this.cameras.main.shake(120, 0.00135, false);
@@ -5071,6 +5065,7 @@ const leaderboards = (() => {
 
     endGame() {
       if (this.state !== "playing") return;
+      this.clearMasochismShield();
       this.state = "gameOver";
       runtime.mode = "gameOver";
       this.clearJoystick();
